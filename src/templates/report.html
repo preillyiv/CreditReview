@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ company.name }} Financial Report</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #333;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #333;
+            padding-bottom: 15px;
+        }
+
+        .logo {
+            width: 80px;
+            height: 80px;
+            margin-right: 20px;
+        }
+
+        .logo img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .company-title h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .company-title .ticker {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .narrative {
+            margin-bottom: 25px;
+            text-align: justify;
+        }
+
+        .narrative p {
+            margin-bottom: 10px;
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 10px;
+        }
+
+        th, td {
+            border: 1px solid #ccc;
+            padding: 6px 8px;
+            text-align: right;
+        }
+
+        th {
+            background-color: #1a365d;
+            color: white;
+            font-weight: bold;
+        }
+
+        th:first-child, td:first-child {
+            text-align: left;
+        }
+
+        .table-title {
+            background-color: #1a365d;
+            color: white;
+            font-weight: bold;
+            text-align: left;
+        }
+
+        /* Delta coloring */
+        .positive {
+            background-color: #c6efce;
+            color: #006100;
+        }
+
+        .negative {
+            background-color: #ffc7ce;
+            color: #9c0006;
+        }
+
+        .negative-text {
+            color: #c00000;
+        }
+
+        /* Ratings section */
+        .ratings-section {
+            margin-top: 25px;
+            border: 1px solid #ccc;
+            padding: 15px;
+        }
+
+        .ratings-section h3 {
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
+
+        .ratings-table {
+            width: auto;
+        }
+
+        .ratings-table td {
+            border: none;
+            padding: 4px 20px 4px 0;
+        }
+
+        .ratings-table td:last-child {
+            text-align: right;
+            padding-right: 0;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin: 20px 0 10px 0;
+            color: #1a365d;
+        }
+
+        @media print {
+            body {
+                padding: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header with logo -->
+    <div class="header">
+        {% if logo_path %}
+        <div class="logo">
+            <img src="{{ logo_path }}" alt="{{ company.name }} logo">
+        </div>
+        {% endif %}
+        <div class="company-title">
+            <h1>{{ company.name }}</h1>
+            <span class="ticker">{{ company.ticker }} | {{ company.sector }}</span>
+        </div>
+    </div>
+
+    <!-- Company Narrative -->
+    <div class="narrative">
+        {{ narrative | safe }}
+    </div>
+
+    <!-- Financial Statements Overview -->
+    <h2 class="section-title">Financial Statements Overview</h2>
+    <table>
+        <thead>
+            <tr>
+                <th class="table-title">Financial Statements Overview</th>
+                <th>2024</th>
+                <th>2023</th>
+                <th>Delta</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Tangible Net Worth</td>
+                <td>${{ "%.1f"|format(metrics.tangible_net_worth / 1000) }}B</td>
+                <td>${{ "%.1f"|format(metrics.tangible_net_worth_prior / 1000) }}B</td>
+                <td class="{{ 'positive' if metrics_deltas.tangible_net_worth_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(metrics_deltas.tangible_net_worth_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Cash Balance (Dec)</td>
+                <td>${{ "%.1f"|format(metrics.cash_balance) }}M</td>
+                <td>${{ "%.1f"|format(metrics.cash_balance_prior) }}M</td>
+                <td class="{{ 'positive' if metrics_deltas.cash_balance_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(metrics_deltas.cash_balance_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Top Line Revenue</td>
+                <td>${{ "%.1f"|format(metrics.top_line_revenue / 1000) }}B</td>
+                <td>${{ "%.1f"|format(metrics.top_line_revenue_prior / 1000) }}B</td>
+                <td class="{{ 'positive' if metrics_deltas.top_line_revenue_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(metrics_deltas.top_line_revenue_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Gross Profit</td>
+                <td>${{ "%.1f"|format(metrics.gross_profit) }}M</td>
+                <td>${{ "%.1f"|format(metrics.gross_profit_prior) }}M</td>
+                <td class="{{ 'positive' if metrics_deltas.gross_profit_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(metrics_deltas.gross_profit_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Gross Profit Margin</td>
+                <td>{{ "%.2f"|format(metrics.gross_profit_margin * 100) }}%</td>
+                <td>{{ "%.2f"|format(metrics.gross_profit_margin_prior * 100) }}%</td>
+                <td class="{{ 'positive' if metrics_deltas.gross_profit_margin_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(metrics_deltas.gross_profit_margin_delta * 100) }}%
+                </td>
+            </tr>
+            <tr>
+                <td>Operating Income</td>
+                <td>${{ "%.1f"|format(metrics.operating_income) }}M</td>
+                <td>${{ "%.1f"|format(metrics.operating_income_prior) }}M</td>
+                <td class="{{ 'positive' if metrics_deltas.operating_income_delta >= 0 else 'negative' }}">
+                    {{ '-' if metrics_deltas.operating_income_delta < 0 else '' }}${{ "%.1f"|format(metrics_deltas.operating_income_delta|abs) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Operating Income Margin</td>
+                <td>{{ "%.2f"|format(metrics.operating_income_margin * 100) }}%</td>
+                <td>{{ "%.2f"|format(metrics.operating_income_margin_prior * 100) }}%</td>
+                <td class="{{ 'positive' if metrics_deltas.operating_income_margin_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(metrics_deltas.operating_income_margin_delta * 100) }}%
+                </td>
+            </tr>
+            <tr>
+                <td>EBITDA</td>
+                <td>${{ "%.1f"|format(metrics.ebitda) }}M</td>
+                <td>${{ "%.1f"|format(metrics.ebitda_prior) }}M</td>
+                <td class="{{ 'positive' if metrics_deltas.ebitda_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(metrics_deltas.ebitda_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>EBITDA Margin</td>
+                <td>{{ "%.2f"|format(metrics.ebitda_margin * 100) }}%</td>
+                <td>{{ "%.2f"|format(metrics.ebitda_margin_prior * 100) }}%</td>
+                <td class="{{ 'positive' if metrics_deltas.ebitda_margin_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(metrics_deltas.ebitda_margin_delta * 100) }}%
+                </td>
+            </tr>
+            <tr>
+                <td>Adjusted EBITDA</td>
+                <td>${{ "%.1f"|format(metrics.adjusted_ebitda) }}M</td>
+                <td>${{ "%.1f"|format(metrics.adjusted_ebitda_prior) }}M</td>
+                <td class="{{ 'positive' if metrics_deltas.adjusted_ebitda_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(metrics_deltas.adjusted_ebitda_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Adj. EBITDA Margin</td>
+                <td>{{ "%.2f"|format(metrics.adjusted_ebitda_margin * 100) }}%</td>
+                <td>{{ "%.2f"|format(metrics.adjusted_ebitda_margin_prior * 100) }}%</td>
+                <td class="{{ 'positive' if metrics_deltas.adjusted_ebitda_margin_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(metrics_deltas.adjusted_ebitda_margin_delta * 100) }}%
+                </td>
+            </tr>
+            <tr>
+                <td>Net Income</td>
+                <td>${{ "%.1f"|format(metrics.net_income) }}M</td>
+                <td>${{ "%.1f"|format(metrics.net_income_prior) }}M</td>
+                <td class="{{ 'positive' if metrics_deltas.net_income_delta >= 0 else 'negative' }}">
+                    {{ '-' if metrics_deltas.net_income_delta < 0 else '' }}${{ "%.1f"|format(metrics_deltas.net_income_delta|abs) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Net Income Margin</td>
+                <td>{{ "%.2f"|format(metrics.net_income_margin * 100) }}%</td>
+                <td>{{ "%.2f"|format(metrics.net_income_margin_prior * 100) }}%</td>
+                <td class="{{ 'positive' if metrics_deltas.net_income_margin_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(metrics_deltas.net_income_margin_delta * 100) }}%
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Ratios -->
+    <h2 class="section-title">Ratios</h2>
+    <table>
+        <thead>
+            <tr>
+                <th class="table-title">Ratios</th>
+                <th>2024</th>
+                <th>2023</th>
+                <th>Delta</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Current Ratio</td>
+                <td>{{ "%.2f"|format(ratios.current_ratio) }}x</td>
+                <td>{{ "%.2f"|format(ratios.current_ratio_prior) }}x</td>
+                <td class="{{ 'positive' if ratios_deltas.current_ratio_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(ratios_deltas.current_ratio_delta) }}x
+                </td>
+            </tr>
+            <tr>
+                <td>Cash Ratio</td>
+                <td>{{ "%.2f"|format(ratios.cash_ratio) }}x</td>
+                <td>{{ "%.2f"|format(ratios.cash_ratio_prior) }}x</td>
+                <td class="{{ 'positive' if ratios_deltas.cash_ratio_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(ratios_deltas.cash_ratio_delta) }}x
+                </td>
+            </tr>
+            <tr>
+                <td>Debt-to-Equity Ratio</td>
+                <td>{{ "%.2f"|format(ratios.debt_to_equity) }}x</td>
+                <td>{{ "%.2f"|format(ratios.debt_to_equity_prior) }}x</td>
+                <td class="{{ 'negative' if ratios_deltas.debt_to_equity_delta > 0 else 'positive' }}">
+                    {{ "%.2f"|format(ratios_deltas.debt_to_equity_delta) }}x
+                </td>
+            </tr>
+            <tr>
+                <td>EBITDA Interest Coverage</td>
+                <td>{{ "%.2f"|format(ratios.ebitda_interest_coverage) }}x</td>
+                <td>{{ "%.2f"|format(ratios.ebitda_interest_coverage_prior) }}x</td>
+                <td class="{{ 'positive' if ratios_deltas.ebitda_interest_coverage_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(ratios_deltas.ebitda_interest_coverage_delta) }}x
+                </td>
+            </tr>
+            <tr>
+                <td>Net Debt / EBITDA</td>
+                <td>{{ "%.2f"|format(ratios.net_debt_to_ebitda) }}x</td>
+                <td>{{ "%.2f"|format(ratios.net_debt_to_ebitda_prior) }}x</td>
+                <td class="{{ 'negative' if ratios_deltas.net_debt_to_ebitda_delta > 0 else 'positive' }}">
+                    {{ "%.2f"|format(ratios_deltas.net_debt_to_ebitda_delta) }}x
+                </td>
+            </tr>
+            <tr>
+                <td>Net Debt / Adj. EBITDA</td>
+                <td>{{ "%.2f"|format(ratios.net_debt_to_adj_ebitda) }}x</td>
+                <td>{{ "%.2f"|format(ratios.net_debt_to_adj_ebitda_prior) }}x</td>
+                <td class="{{ 'negative' if ratios_deltas.net_debt_to_adj_ebitda_delta > 0 else 'positive' }}">
+                    {{ "%.2f"|format(ratios_deltas.net_debt_to_adj_ebitda_delta) }}x
+                </td>
+            </tr>
+            <tr>
+                <td>Days Sales Outstanding</td>
+                <td>{{ "%.1f"|format(ratios.days_sales_outstanding) }}</td>
+                <td>{{ "%.1f"|format(ratios.days_sales_outstanding_prior) }}</td>
+                <td class="{{ 'negative' if ratios_deltas.days_sales_outstanding_delta > 0 else 'positive' }}">
+                    {{ "%.1f"|format(ratios_deltas.days_sales_outstanding_delta) }}
+                </td>
+            </tr>
+            <tr>
+                <td>Working Capital</td>
+                <td>${{ "%.1f"|format(ratios.working_capital) }}M</td>
+                <td>${{ "%.1f"|format(ratios.working_capital_prior) }}M</td>
+                <td class="{{ 'positive' if ratios_deltas.working_capital_delta >= 0 else 'negative' }}">
+                    ${{ "%.1f"|format(ratios_deltas.working_capital_delta) }}M
+                </td>
+            </tr>
+            <tr>
+                <td>Return on Assets</td>
+                <td>{{ "%.2f"|format(ratios.return_on_assets * 100) }}%</td>
+                <td>{{ "%.2f"|format(ratios.return_on_assets_prior * 100) }}%</td>
+                <td class="{{ 'positive' if ratios_deltas.return_on_assets_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(ratios_deltas.return_on_assets_delta * 100) }}%
+                </td>
+            </tr>
+            <tr>
+                <td>Return on Equity</td>
+                <td>{{ "%.2f"|format(ratios.return_on_equity * 100) }}%</td>
+                <td>{{ "%.2f"|format(ratios.return_on_equity_prior * 100) }}%</td>
+                <td class="{{ 'positive' if ratios_deltas.return_on_equity_delta >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(ratios_deltas.return_on_equity_delta * 100) }}%
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Ratings Section -->
+    {% if ratings.sp_rating or ratings.moodys_rating %}
+    <div class="ratings-section">
+        <table class="ratings-table">
+            {% if ratings.sp_rating %}
+            <tr>
+                <td>S&P (Long-Term)</td>
+                <td>{{ ratings.sp_rating }}</td>
+            </tr>
+            <tr>
+                <td>S&P Outlook</td>
+                <td>{{ ratings.sp_outlook or 'N/A' }}</td>
+            </tr>
+            {% endif %}
+            {% if ratings.moodys_rating %}
+            <tr>
+                <td>Moody's (Long-Term Rating)</td>
+                <td>{{ ratings.moodys_rating }}</td>
+            </tr>
+            <tr>
+                <td>Moody's Outlook</td>
+                <td>{{ ratings.moodys_outlook or 'N/A' }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+                <td>HQ</td>
+                <td>{{ company_details.hq }}</td>
+            </tr>
+            <tr>
+                <td>Public/Private?</td>
+                <td>{{ company_details.public_private }}</td>
+            </tr>
+            {% if company_details.locations %}
+            <tr>
+                <td>Locations</td>
+                <td>{{ company_details.locations }}</td>
+            </tr>
+            {% endif %}
+            {% if company_details.ttm_revenue %}
+            <tr>
+                <td>TTM Revenue</td>
+                <td>{{ company_details.ttm_revenue }}</td>
+            </tr>
+            {% endif %}
+        </table>
+    </div>
+    {% endif %}
+</body>
+</html>
