@@ -60,7 +60,7 @@ Write 2-3 paragraphs covering:
 Keep the tone professional and factual. Focus on the most important insights from the financial data."""
 
     message = client.messages.create(
-        model="claude-sonnet-4-20250514",
+        model="claude-opus-4-5-20251101",
         max_tokens=1024,
         messages=[
             {"role": "user", "content": prompt}
