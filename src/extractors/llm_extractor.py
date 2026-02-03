@@ -30,29 +30,6 @@ class ExtractionResult:
     warnings: list[str] = field(default_factory=list)  # Any data quality concerns
 
 
-# Keywords that indicate relevant financial concepts
-RELEVANT_KEYWORDS = {
-    # Income statement
-    "revenue", "sales", "income", "profit", "loss", "expense", "cost",
-    "margin", "ebitda", "earnings", "interest", "depreciation", "amortization",
-    "gross", "operating", "tax", "dividend",
-    # Balance sheet
-    "asset", "liability", "equity", "debt", "cash", "receivable", "payable",
-    "inventory", "current", "goodwill", "intangible", "capital", "stock",
-    "retained", "treasury", "working",
-    # Cash flow
-    "cashflow", "flow",
-    # Ratios/returns
-    "return", "ratio",
-}
-
-
-def _is_relevant_concept(concept_name: str, label: str | None) -> bool:
-    """Check if a concept is relevant for financial analysis."""
-    text = (concept_name + " " + (label or "")).lower()
-    return any(kw in text for kw in RELEVANT_KEYWORDS)
-
-
 def _build_concept_summary(raw_data: dict, taxonomy: str = "us-gaap", min_year: int = 2022) -> str:
     """
     Build a summary of available XBRL concepts with their recent values.
@@ -66,11 +43,7 @@ def _build_concept_summary(raw_data: dict, taxonomy: str = "us-gaap", min_year: 
     for concept_name, concept_data in taxonomy_data.items():
         label = concept_data.get("label", concept_name)
 
-        # Filter to relevant concepts only
-        if not _is_relevant_concept(concept_name, label):
-            continue
-
-        # Get recent annual values (USD only for monetary, others for ratios)
+        # Get recent annual values
         for unit_type, entries in concept_data.get("units", {}).items():
             # Filter for 10-K filings
             annual_entries = [
@@ -265,7 +238,7 @@ def extract_financial_data(ticker: str) -> ExtractionResult | None:
 
     message = client.messages.create(
         model="claude-opus-4-5-20251101",
-        max_tokens=4096,
+        max_tokens=16000,
         messages=[
             {"role": "user", "content": prompt}
         ]
