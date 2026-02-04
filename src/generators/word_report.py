@@ -383,7 +383,7 @@ def add_ebitda_reconciliation(doc: Document, metrics: FinancialMetrics, fiscal_y
 
 
 def generate_word_report(
-    output_path: Path,
+    output_path,
     company_info: CompanyInfo,
     metrics: FinancialMetrics,
     ratios: FinancialRatios,
@@ -392,12 +392,16 @@ def generate_word_report(
     narrative: str = "",
     corporate_actions: list[CorporateAction] = None,
     logo_path: Path = None,
-) -> Path:
+    sp_rating: str = "[EDIT]",
+    sp_outlook: str = "[EDIT]",
+    moodys_rating: str = "[EDIT]",
+    moodys_outlook: str = "[EDIT]",
+):
     """
     Generate a Word document financial report.
 
     Args:
-        output_path: Path to save the .docx file
+        output_path: Path to save the .docx file, or BytesIO buffer
         company_info: Company information from Yahoo Finance
         metrics: Financial metrics
         ratios: Financial ratios
@@ -406,9 +410,13 @@ def generate_word_report(
         narrative: LLM-generated company narrative
         corporate_actions: List of corporate actions
         logo_path: Path to company logo image
+        sp_rating: S&P rating (or [EDIT] placeholder)
+        sp_outlook: S&P outlook (or [EDIT] placeholder)
+        moodys_rating: Moody's rating (or [EDIT] placeholder)
+        moodys_outlook: Moody's outlook (or [EDIT] placeholder)
 
     Returns:
-        Path to the generated document
+        Path to the generated document (if output_path is a Path)
 
     Note:
         S&P/Moody's ratings, locations, and other manual data are marked with
@@ -417,17 +425,20 @@ def generate_word_report(
     doc = Document()
 
     # Title
-    title = doc.add_heading(f"Financial Report: {company_info.name}", level=0)
+    company_name = company_info.name if company_info else "Company"
+    title = doc.add_heading(f"Financial Report: {company_name}", level=0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # Company Overview
-    add_company_overview(doc, company_info, narrative, logo_path)
+    if company_info:
+        add_company_overview(doc, company_info, narrative, logo_path)
 
     # Corporate Actions
     add_corporate_actions(doc, corporate_actions or [])
 
     # S&P/Moody's section (with editable placeholders)
-    add_sp_outlook_section(doc, company_info, ttm_revenue=metrics.top_line_revenue)
+    if company_info:
+        add_sp_outlook_section(doc, company_info, ttm_revenue=metrics.top_line_revenue)
 
     # Financial Statements Overview
     add_financial_overview_table(doc, metrics, fiscal_year_end, fiscal_year_end_prior)
@@ -438,9 +449,13 @@ def generate_word_report(
     # EBITDA Reconciliation
     add_ebitda_reconciliation(doc, metrics, fiscal_year_end, fiscal_year_end_prior)
 
-    # Save
-    output_path = Path(output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    doc.save(output_path)
-
-    return output_path
+    # Save - support both Path and BytesIO
+    import io
+    if isinstance(output_path, io.BytesIO):
+        doc.save(output_path)
+        return None
+    else:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(output_path)
+        return output_path

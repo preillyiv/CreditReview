@@ -36,6 +36,8 @@ class FinancialFact:
     form: str  # 10-K, 10-Q
     filed: str
     frame: str = ""  # e.g., "CY2024" - the calendar year frame
+    accession_number: str = ""  # SEC accession number (e.g., "0001018724-24-000015")
+    concept_name: str = ""  # The XBRL concept name (e.g., "Revenues")
 
 
 @dataclass
@@ -56,11 +58,12 @@ def lookup_cik(ticker: str) -> SECCompanyInfo | None:
     Returns:
         SECCompanyInfo with CIK, name, and ticker, or None if not found
     """
+    ticker_upper = ticker.upper()
+
     response = requests.get(SEC_COMPANY_TICKERS_URL, headers=SEC_HEADERS)
     response.raise_for_status()
 
     data = response.json()
-    ticker_upper = ticker.upper()
 
     # SEC returns dict with numeric keys, each containing cik_str, ticker, title
     for entry in data.values():
@@ -74,6 +77,50 @@ def lookup_cik(ticker: str) -> SECCompanyInfo | None:
             )
 
     return None
+
+
+def lookup_by_cik(cik: str) -> SECCompanyInfo | None:
+    """
+    Look up a company directly by CIK number.
+
+    Args:
+        cik: SEC CIK number (e.g., "0001398987" or "1398987")
+
+    Returns:
+        SECCompanyInfo with CIK, name, and ticker, or None if not found
+    """
+    # Normalize CIK to 10 digits
+    cik_padded = cik.lstrip("0").zfill(10)
+
+    try:
+        # Fetch company facts to get the company name
+        url = SEC_COMPANY_FACTS_URL.format(cik=cik_padded)
+        response = requests.get(url, headers=SEC_HEADERS)
+        response.raise_for_status()
+
+        data = response.json()
+        company_name = data.get("entityName", "Unknown Company")
+
+        # Try to find ticker from the tickers list
+        ticker = ""
+        try:
+            tickers_response = requests.get(SEC_COMPANY_TICKERS_URL, headers=SEC_HEADERS)
+            tickers_data = tickers_response.json()
+            cik_int = int(cik_padded)
+            for entry in tickers_data.values():
+                if entry.get("cik_str") == cik_int:
+                    ticker = entry.get("ticker", "")
+                    break
+        except Exception:
+            pass
+
+        return SECCompanyInfo(
+            cik=cik_padded,
+            name=company_name,
+            ticker=ticker,
+        )
+    except requests.HTTPError:
+        return None
 
 
 def fetch_company_facts(cik: str) -> dict:
@@ -91,6 +138,76 @@ def fetch_company_facts(cik: str) -> dict:
     response.raise_for_status()
 
     return response.json()
+
+
+def build_sec_filing_url(cik: str, accession_number: str) -> str:
+    """
+    Build a URL to the SEC filing viewer for a specific accession.
+
+    Args:
+        cik: 10-digit CIK number (zero-padded)
+        accession_number: SEC accession number (e.g., "0001018724-24-000015")
+
+    Returns:
+        URL to the SEC filing viewer page
+    """
+    # Remove dashes from accession number for the URL path
+    accession_no_dashes = accession_number.replace("-", "")
+    # CIK should not have leading zeros in URL
+    cik_stripped = cik.lstrip("0") or "0"
+    return f"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={cik_stripped}&type=10-K&dateb=&owner=include&count=40&search_text="
+
+
+def build_sec_document_url(cik: str, accession_number: str) -> str:
+    """
+    Build a URL to the SEC's Interactive Data viewer for a filing.
+    Opens directly to the Financial Statements tab.
+
+    Args:
+        cik: 10-digit CIK number (zero-padded)
+        accession_number: SEC accession number (e.g., "0001018724-24-000015")
+
+    Returns:
+        URL to the SEC Interactive Data viewer (Financial Statements tab)
+    """
+    # CIK should not have leading zeros
+    cik_stripped = cik.lstrip("0") or "0"
+    # Use the SEC's Interactive Data viewer with report=2 to open Financial Statements tab
+    return f"https://www.sec.gov/cgi-bin/viewer?action=view&cik={cik_stripped}&accession_number={accession_number}&xbrl_type=v&report=2"
+
+
+def build_sec_fact_url(cik: str, accession_number: str, concept: str) -> str:
+    """
+    Build a URL to search for a specific fact in SEC EDGAR.
+    Opens to Financial Statements tab where most financial data lives.
+
+    Args:
+        cik: 10-digit CIK number (zero-padded)
+        accession_number: SEC accession number
+        concept: The XBRL concept name (e.g., "Revenues")
+
+    Returns:
+        URL to view the specific fact
+    """
+    cik_stripped = cik.lstrip("0") or "0"
+    # Link to Financial Statements tab (report=2)
+    return f"https://www.sec.gov/cgi-bin/viewer?action=view&cik={cik_stripped}&accession_number={accession_number}&xbrl_type=v&report=2"
+
+
+def build_sec_viewer_url(cik: str, accession_number: str) -> str:
+    """
+    Build a URL to the SEC's interactive filing viewer.
+
+    Args:
+        cik: 10-digit CIK number (zero-padded)
+        accession_number: SEC accession number (e.g., "0001018724-24-000015")
+
+    Returns:
+        URL to the SEC interactive filing viewer
+    """
+    # CIK should not have leading zeros in URL
+    cik_stripped = cik.lstrip("0") or "0"
+    return f"https://www.sec.gov/cgi-bin/viewer?action=view&cik={cik_stripped}&accession_number={accession_number}"
 
 
 def extract_facts(raw_data: dict, concept: str, taxonomy: str = "us-gaap") -> list[FinancialFact]:
@@ -129,6 +246,8 @@ def extract_facts(raw_data: dict, concept: str, taxonomy: str = "us-gaap") -> li
                     form=entry.get("form", ""),
                     filed=entry.get("filed", ""),
                     frame=entry.get("frame", ""),
+                    accession_number=entry.get("accn", ""),
+                    concept_name=concept,
                 ))
     except (KeyError, TypeError):
         pass

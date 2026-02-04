@@ -1,67 +1,75 @@
 # Financial Reporting Tool
 
-## Project Overview
-Internal web application that generates PDF financial reports for publicly traded companies from CSV uploads.
+> **Note to Claude:** Keep this file up to date. When you make significant changes to the project (new features, architectural changes, new dependencies, modified APIs, changed workflows), update the relevant sections of this document to reflect the current state.
 
-**Target users:** Internal team members (non-technical) who upload CSVs via browser and download PDF reports.
+## Project Overview
+Internal web application that generates financial reports for publicly traded companies by extracting data directly from SEC EDGAR filings.
+
+**Target users:** Internal team members (non-technical) who enter a ticker symbol and get a comprehensive financial report.
 
 ## Architecture
 **Web-based** with a Python backend API:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Frontend (React)                                           │
-│  - CSV upload UI                                            │
+│  Frontend (React + Vite)                                    │
+│  - Ticker input and extraction controls                     │
+│  - Raw value review/approval UI                             │
 │  - Manual input fields (S&P/Moody's ratings, etc.)          │
-│  - Report preview & PDF download                            │
+│  - Export to Word/Excel/PDF                                 │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Backend API (FastAPI)                                      │
-│  POST /api/reports/generate                                 │
-│  - Receives CSVs + manual inputs                            │
-│  - Returns generated PDF                                    │
+│  POST /api/extract - Start extraction for ticker            │
+│  GET  /api/extract/{id}/status - Check extraction progress  │
+│  POST /api/approve - Approve reviewed raw values            │
+│  POST /api/export/excel - Export to Excel                   │
+│  POST /api/export/report - Export to Word                   │
+│  POST /api/export/pdf - Export to PDF                       │
 └─────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Report Generation Pipeline (Python)                        │
-│  1. Parse CSVs → pandas DataFrames                          │
-│  2. Calculate metrics & ratios                              │
-│  3. Fetch company info (yfinance) + logo (Clearbit)         │
-│  4. Generate narrative (Anthropic API)                      │
-│  5. Render HTML template → PDF (WeasyPrint)                 │
+│  1. Fetch XBRL data from SEC EDGAR                          │
+│  2. Extract raw values via LLM (Claude)                     │
+│  3. User reviews/approves raw values                        │
+│  4. Calculate metrics & ratios from approved values         │
+│  5. Fetch company info (yfinance) + logo (Logo.dev/fallbacks)│
+│  6. Generate narrative (Anthropic API)                      │
+│  7. Generate Word report (python-docx)                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-This is a **deterministic pipeline**, not an agent. No branching logic or tool selection needed.
-
 ## Input
-- CSV files: annual financials, balance sheet, cash flows (uploaded via web UI)
+- Ticker symbol (data fetched automatically from SEC EDGAR)
 - Manual inputs via form: S&P/Moody's ratings, HQ, locations, etc.
-- Ticker symbol for Yahoo Finance lookups
 
 ## Output
-PDF report containing:
+Word/Excel/PDF report containing:
 1. Company logo + basic info
-2. Company story/narrative (LLM-generated from financials + scraped context)
+2. Company story/narrative (LLM-generated from financials)
 3. Financial Statements Overview table (metrics with YoY deltas, color-coded)
 4. Ratios table (current ratio, debt-to-equity, etc.)
-5. Key Corporate Actions (from Yahoo Finance)
-6. S&P/Moody's outlook section
+5. EBITDA Reconciliation table
+6. Key Corporate Actions (from Yahoo Finance)
+7. S&P/Moody's outlook section (manual input with [EDIT] placeholders)
 
 ## Tech Stack
 **Backend (Python):**
 - **FastAPI** - REST API
-- **pandas** - CSV parsing and financial calculations
+- **anthropic** - LLM calls for data extraction and narrative generation
 - **yfinance** - Yahoo Finance data (company info, corporate actions)
-- **anthropic** - LLM calls for narrative generation
-- **Jinja2 + WeasyPrint** - HTML to PDF conversion
+- **python-docx** - Word document generation
+- **openpyxl** - Excel export with formulas
+- **Pillow** - Image processing for logo conversion
+- **requests** - SEC EDGAR API and logo fetching
 
-**Frontend (TBD):**
-- **React + Vite** (recommended)
-- File upload, form inputs, PDF preview/download
+**Frontend:**
+- **React + Vite** - Located in `frontend/`
+- Extraction UI, raw value review, export controls
 
 **Development only:**
 - CLI wrapper (`cli.py`) for testing the pipeline without the web UI
@@ -93,18 +101,32 @@ uv add --dev <package>       # Add to [dev] optional group
 ## Project Structure
 ```
 src/
-├── api/                # FastAPI routes (TBD)
-├── pipeline.py         # Main report generation orchestration
-├── parsers/            # CSV parsing logic
-├── calculators/        # Metrics and ratios calculations
-├── fetchers/           # External data (yfinance, Clearbit)
-├── generators/         # Narrative (LLM) and PDF generation
-└── templates/          # Jinja2 HTML templates
+├── api/                    # FastAPI routes
+│   └── routes/
+│       ├── extraction.py   # /api/extract endpoints
+│       └── export.py       # /api/export endpoints
+├── extractors/             # SEC EDGAR data extraction
+│   ├── llm_extractor.py    # Main LLM-based extraction
+│   ├── concept_mapper.py   # XBRL concept mapping
+│   └── value_extractor.py  # Raw value extraction helpers
+├── calculators/            # Metrics and ratios calculations
+│   ├── metrics.py          # Financial metrics (EBITDA, margins, etc.)
+│   └── ratios.py           # Financial ratios (current ratio, etc.)
+├── fetchers/               # External data fetching
+│   ├── sec_edgar.py        # SEC EDGAR XBRL data
+│   ├── yahoo.py            # Yahoo Finance (company info, actions)
+│   └── logo.py             # Logo fetching (Logo.dev + fallbacks)
+├── generators/             # Report generation
+│   ├── word_report.py      # Word document (.docx)
+│   ├── excel_export.py     # Excel with formulas (.xlsx)
+│   ├── narrative.py        # LLM narrative generation
+│   └── extraction_log.py   # Extraction audit log
+├── models/                 # Data models
+│   └── extraction.py       # ExtractionSession, RawValue, etc.
+└── cli.py                  # Development CLI
 
-frontend/               # React app (TBD)
-data/sample/            # Sample CSVs for testing
-output/                 # Generated reports (dev only)
-tests/                  # Unit tests
+frontend/                   # React + Vite app
+output/                     # Generated reports (dev only)
 ```
 
 ## Key Metrics (from images)
@@ -136,29 +158,38 @@ tests/                  # Unit tests
 - Red text: negative values
 - Values formatted with $ and M/B suffixes
 
-## API Endpoints (planned)
+## API Endpoints
 ```
-POST /api/reports/generate
-  - Body: multipart form with CSV files + JSON metadata
-  - Returns: PDF file
+# Extraction
+POST /api/extract           - Start extraction for a ticker
+GET  /api/extract/{id}      - Get extraction session status
+POST /api/approve           - Approve reviewed raw values
 
-GET /api/company/{ticker}/info
-  - Returns: Company info from Yahoo Finance (for preview)
+# Export
+POST /api/export/excel      - Export to Excel with formulas
+POST /api/export/report     - Export to Word document
+POST /api/export/pdf        - Export to PDF (requires LibreOffice)
 ```
 
 ## Development CLI
 For testing the pipeline without spinning up the web app:
 ```bash
-uv run python -m src.cli generate --ticker VZ --csvs ./data/
+uv run python -m src.cli generate AMZN    # Full report generation
+uv run python -m src.cli extract AMZN     # Extract data only (shows metrics)
+uv run python -m src.cli fetch AMZN       # Raw SEC EDGAR data (no LLM)
+uv run python -m src.cli info AMZN        # Yahoo Finance company info
 ```
 This is **dev-only** - not the product interface.
 
 ## Environment Variables
 Stored in `.env` (git-ignored):
-- `ANTHROPIC_API_KEY` - Required for narrative generation
+- `ANTHROPIC_API_KEY` - Required for LLM extraction and narrative generation
+- `LOGO_DEV_TOKEN` - Logo.dev API token for company logo fetching
 
 ## Notes
-- CSV format expected to match Yahoo Finance export structure (TBD based on actual samples)
+- Data is fetched from SEC EDGAR XBRL filings (no CSV upload needed)
 - S&P/Moody's ratings must be input manually via web form - no free API exists
-- Logo fetching uses Clearbit's free endpoint (no API key needed)
-- PDF generation happens server-side; frontend just displays/downloads the result
+- Logo fetching uses multiple providers with fallbacks: Logo.dev (primary), Clearbit, Google S2, DuckDuckGo
+- Logos are converted to PNG for best python-docx compatibility
+- PDF export requires LibreOffice installed; Word export works without it
+- The extraction workflow includes a human review step before final report generation

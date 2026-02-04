@@ -3,7 +3,7 @@
 import os
 from anthropic import Anthropic
 
-from src.fetchers.yahoo import CompanyInfo
+from src.fetchers.yahoo import CompanyInfo, CorporateAction
 from src.calculators.metrics import FinancialMetrics
 from src.calculators.ratios import FinancialRatios
 
@@ -12,7 +12,7 @@ def generate_company_narrative(
     company_info: CompanyInfo,
     metrics: FinancialMetrics,
     ratios: FinancialRatios,
-    corporate_actions: list[dict] | None = None,
+    corporate_actions: list[CorporateAction] | None = None,
 ) -> str:
     """
     Generate a company narrative using Claude.
@@ -73,11 +73,21 @@ Keep the tone professional and factual. Focus on the most important insights fro
 def _format_metrics_for_prompt(metrics: FinancialMetrics) -> str:
     """Format metrics for inclusion in prompt."""
     deltas = metrics.calculate_deltas()
-    return f"""- Revenue: ${metrics.top_line_revenue:,.0f}M (Delta: ${deltas['top_line_revenue_delta']:,.0f}M)
+
+    def fmt_currency(val: float) -> str:
+        """Format a currency value with B/M suffix."""
+        if abs(val) >= 1e9:
+            return f"${val/1e9:,.1f}B"
+        elif abs(val) >= 1e6:
+            return f"${val/1e6:,.1f}M"
+        else:
+            return f"${val:,.0f}"
+
+    return f"""- Revenue: {fmt_currency(metrics.top_line_revenue)} (Delta: {fmt_currency(deltas['top_line_revenue_delta'])})
 - Gross Profit Margin: {metrics.gross_profit_margin:.1%} (Delta: {deltas['gross_profit_margin_delta']:.1%})
 - Operating Income Margin: {metrics.operating_income_margin:.1%} (Delta: {deltas['operating_income_margin_delta']:.1%})
-- EBITDA: ${metrics.ebitda:,.0f}M (Delta: ${deltas['ebitda_delta']:,.0f}M)
-- Net Income: ${metrics.net_income:,.0f}M (Delta: ${deltas['net_income_delta']:,.0f}M)"""
+- EBITDA: {fmt_currency(metrics.ebitda)} (Delta: {fmt_currency(deltas['ebitda_delta'])})
+- Net Income: {fmt_currency(metrics.net_income)} (Delta: {fmt_currency(deltas['net_income_delta'])})"""
 
 
 def _format_ratios_for_prompt(ratios: FinancialRatios) -> str:
@@ -88,12 +98,12 @@ def _format_ratios_for_prompt(ratios: FinancialRatios) -> str:
 - Return on Equity: {ratios.return_on_equity:.1%}"""
 
 
-def _format_actions_for_prompt(actions: list[dict]) -> str:
+def _format_actions_for_prompt(actions: list[CorporateAction]) -> str:
     """Format corporate actions for inclusion in prompt."""
     if not actions:
         return "No recent corporate actions available."
 
     lines = []
     for action in actions[:5]:
-        lines.append(f"- {action.get('date', 'N/A')}: {action.get('description', 'N/A')}")
+        lines.append(f"- {action.date}: {action.description}")
     return "\n".join(lines)

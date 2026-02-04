@@ -69,9 +69,8 @@ def generate(ticker, output):
     if company_info.website:
         domain = get_domain_from_website(company_info.website)
         if domain:
-            logo_file = output_path / f"{ticker.lower()}_logo.png"
-            if download_logo(domain, logo_file):
-                logo_path = logo_file
+            logo_path = download_logo(domain, output_path)
+            if logo_path:
                 click.echo(f"   Saved to {logo_path}")
             else:
                 click.echo("   Could not download logo")
@@ -84,7 +83,7 @@ def generate(ticker, output):
         company_info=company_info,
         metrics=extraction.metrics,
         ratios=extraction.ratios,
-        corporate_actions=[{"date": a.date, "description": a.description} for a in corporate_actions[:5]]
+        corporate_actions=corporate_actions[:5],
     )
     click.echo(f"   Generated {len(narrative)} characters")
 

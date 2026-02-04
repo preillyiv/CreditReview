@@ -1,11 +1,10 @@
 [project]
 name = "financial-reporting"
 version = "0.1.0"
-description = "Generate PDF financial reports from CSV uploads"
+description = "Generate financial reports from SEC EDGAR data"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "pandas>=2.0.0",
     "python-dotenv>=1.0.0",
     "fastapi>=0.110.0",
     "uvicorn>=0.27.0",
@@ -13,15 +12,14 @@ dependencies = [
     "yfinance>=0.2.0",
     "requests>=2.31.0",
     "anthropic>=0.40.0",
-    "jinja2>=3.1.0",
-    "weasyprint>=60.0",
     "python-docx>=1.2.0",
+    "openpyxl>=3.1.0",
+    "pillow>=12.1.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "click>=8.1.0",
-    "pytest>=8.0.0",
 ]
 
 [project.scripts]
