@@ -4,11 +4,12 @@ import {
   ApproveResponse,
   EditedValue,
   extractData,
+  extractDataFromPDF,
   approveExtraction,
   exportExcel,
   exportReport,
 } from './api/client';
-import { TickerInput, LLMModel } from './components/TickerInput';
+import { DataInput, InputMode, LLMModel } from './components/TickerInput';
 import { ReviewTable } from './components/ReviewTable';
 import { UnmappedSection } from './components/UnmappedSection';
 import { ExportButtons } from './components/ExportButtons';
@@ -25,13 +26,18 @@ function App() {
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingWord, setExportingWord] = useState(false);
 
-  const handleExtract = async (ticker: string, model: LLMModel) => {
+  const handleExtract = async (mode: InputMode, data: string | File, model: LLMModel) => {
     setState('extracting');
     setError(null);
     setEditedValues({});
 
     try {
-      const result = await extractData(ticker, model);
+      let result: ExtractResponse;
+      if (mode === 'ticker') {
+        result = await extractData(data as string, model);
+      } else {
+        result = await extractDataFromPDF(data as File, model);
+      }
       setExtractResult(result);
       setState('review');
     } catch (err) {
@@ -164,9 +170,9 @@ function App() {
         </div>
       )}
 
-      {/* Step 1: Ticker Input */}
+      {/* Step 1: Data Input (Ticker or PDF) */}
       {state === 'input' && (
-        <TickerInput onSubmit={handleExtract} />
+        <DataInput onSubmit={handleExtract} />
       )}
 
       {/* Loading: Extracting */}
@@ -175,9 +181,9 @@ function App() {
           <div className="loading">
             <div className="spinner"></div>
           </div>
-          <p className="text-center">Extracting financial data from SEC EDGAR...</p>
+          <p className="text-center">Extracting financial data...</p>
           <p className="text-center text-sm text-muted">
-            This may take a moment as we fetch XBRL data and map concepts.
+            This may take a moment as we process your request.
           </p>
         </div>
       )}
@@ -206,7 +212,7 @@ function App() {
           <div className="card">
             <h3>Review Extracted Values</h3>
             <p className="text-sm text-muted mb-2">
-              Click any value to edit. Click the source link to view the SEC filing.
+              Click any value to edit. {extractResult.ticker ? 'Click the source link to view the SEC filing.' : 'Source information is shown for each value.'}
             </p>
             <ReviewTable
               rawValues={extractResult.raw_values}

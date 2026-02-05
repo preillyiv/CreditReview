@@ -8,12 +8,17 @@ Handles:
 """
 
 from datetime import datetime
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel
 
 from src.fetchers.sec_edgar import lookup_cik, lookup_by_cik, fetch_company_facts
 from src.extractors.concept_mapper import map_concepts_with_raw_data
 from src.extractors.value_extractor import extract_values_with_citations
+from src.extractors.session_builder import (
+    NormalizedExtractionData,
+    NormalizedMetric,
+    build_extraction_session,
+)
 from src.calculators.metrics import calculate_metrics_from_raw, FinancialMetrics
 from src.calculators.ratios import calculate_ratios_from_raw, FinancialRatios
 from src.models.extraction import ExtractionSession, CalculationStep
@@ -339,6 +344,61 @@ def _ratios_to_response(ratios: FinancialRatios) -> CalculatedRatiosResponse:
     )
 
 
+def _xbrl_to_normalized(
+    ticker: str,
+    company_name: str,
+    cik: str,
+    fiscal_year_end: str,
+    fiscal_year_end_prior: str,
+    raw_values: dict,
+    not_found: list,
+    llm_model: str,
+    llm_notes: list,
+    llm_warnings: list,
+) -> NormalizedExtractionData:
+    """
+    Convert XBRL extraction result to normalized format.
+    Used by ticker path before sending to shared builder.
+
+    This adapter ensures ticker path produces same structure as PDF path.
+    """
+    metrics = {}
+
+    # Convert ExtractedValue objects to NormalizedMetric
+    for metric_key, extracted_value in raw_values.items():
+        source_desc = extracted_value.citation.xbrl_concept if extracted_value.citation else "Unknown"
+        source_url = extracted_value.citation.filing_url if extracted_value.citation else ""
+
+        metrics[metric_key] = NormalizedMetric(
+            metric_key=metric_key,
+            value=extracted_value.value,
+            value_prior=extracted_value.value_prior,
+            source_description=source_desc,
+            source_url=source_url,
+            reasoning=extracted_value.llm_reasoning,
+            form_type="10-K",
+            period_end=fiscal_year_end,
+            period_end_prior=fiscal_year_end_prior,
+        )
+
+    # Extract not_found metric keys
+    not_found_keys = [nf.metric_key for nf in not_found]
+
+    return NormalizedExtractionData(
+        company_name=company_name,
+        ticker=ticker,
+        cik=cik,
+        fiscal_year_end=fiscal_year_end,
+        fiscal_year_end_prior=fiscal_year_end_prior,
+        metrics=metrics,
+        unmapped_notes=[],  # Not tracked by XBRL path
+        not_found=not_found_keys,
+        llm_model=llm_model,
+        llm_notes=llm_notes,
+        llm_warnings=llm_warnings,
+    )
+
+
 # ============== API Endpoints ==============
 
 @router.post("/extract", response_model=ExtractResponse)
@@ -391,14 +451,7 @@ async def extract(request: ExtractRequest) -> ExtractResponse:
     # Step 2: Fetch raw SEC data
     raw_data = fetch_company_facts(company.cik)
 
-    # Step 3: Create extraction session
-    session = ExtractionSession.create(
-        ticker=ticker,
-        company_name=company.name,
-        cik=company.cik,
-    )
-
-    # Step 4: Map concepts using LLM
+    # Step 3: Map concepts using LLM
     llm_model = request.model or "claude-opus-4-5-20251101"
     mapping_result = map_concepts_with_raw_data(
         company_name=company.name,
@@ -410,13 +463,100 @@ async def extract(request: ExtractRequest) -> ExtractResponse:
     if not mapping_result:
         raise HTTPException(status_code=500, detail="Failed to map XBRL concepts")
 
-    # Step 5: Extract values with citations
-    session = extract_values_with_citations(session, raw_data, mapping_result)
-    session.llm_model = llm_model
+    # Step 4: Extract values with citations (old path - returns populated session)
+    temp_session = ExtractionSession.create(
+        ticker=ticker,
+        company_name=company.name,
+        cik=company.cik,
+    )
+    temp_session = extract_values_with_citations(temp_session, raw_data, mapping_result)
+    temp_session.llm_model = llm_model
+
+    # Step 5: Normalize to common format
+    normalized = _xbrl_to_normalized(
+        ticker=ticker,
+        company_name=company.name,
+        cik=company.cik,
+        fiscal_year_end=temp_session.fiscal_year_end,
+        fiscal_year_end_prior=temp_session.fiscal_year_end_prior,
+        raw_values=temp_session.raw_values,
+        not_found=temp_session.not_found,
+        llm_model=llm_model,
+        llm_notes=temp_session.llm_notes,
+        llm_warnings=temp_session.llm_warnings,
+    )
+
+    # Step 6: Use shared builder to create session (same as PDF path)
+    session = build_extraction_session(normalized)
 
     # Store session and raw data for later
     _sessions[session.session_id] = session
     _raw_data_cache[session.session_id] = raw_data
+
+    return _session_to_extract_response(session)
+
+
+@router.post("/extract-pdf", response_model=ExtractResponse)
+async def extract_pdf(
+    file: UploadFile = File(...),
+    model: str = Form("claude-opus-4-5-20251101")
+) -> ExtractResponse:
+    """
+    Extract financial data from uploaded 10-K PDF.
+
+    This endpoint:
+    1. Extracts text from the PDF
+    2. Uses LLM to extract financial metrics from PDF text
+    3. Normalizes results for review
+    4. Returns data for human review (same as ticker-based extraction)
+
+    The user should review the extracted values, make any corrections,
+    then call POST /api/approve to run calculations.
+
+    Accepts:
+    - PDF file (10-K filing format)
+    """
+    # Validate file is PDF
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="File must be a PDF")
+
+    # Read file bytes
+    pdf_bytes = await file.read()
+
+    # Check file size (max 50MB)
+    if len(pdf_bytes) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 50MB)")
+
+    if len(pdf_bytes) == 0:
+        raise HTTPException(status_code=400, detail="File is empty")
+
+    # Extract text from PDF
+    from src.extractors.pdf_extractor import (
+        extract_text_from_pdf,
+        extract_from_pdf,
+        pdf_to_normalized,
+    )
+
+    try:
+        pdf_text = extract_text_from_pdf(pdf_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # LLM extraction from PDF
+    try:
+        pdf_result = extract_from_pdf(pdf_text, model=model)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Normalize to common format
+    normalized = pdf_to_normalized(pdf_result)
+    normalized.llm_model = model
+
+    # Use shared builder (same as ticker path!)
+    session = build_extraction_session(normalized)
+
+    # Store session
+    _sessions[session.session_id] = session
 
     return _session_to_extract_response(session)
 

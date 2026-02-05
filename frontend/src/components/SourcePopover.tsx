@@ -5,16 +5,28 @@ interface SourcePopoverProps {
 }
 
 export function SourcePopover({ citation }: SourcePopoverProps) {
+  // Check if this is a PDF citation (no filing_url)
+  const isPdfSource = !citation.filing_url;
+
+  // TODO: Future enhancement - embed PDF viewer in review UI with page navigation
+  // This would allow clicking citations to jump to the specific page in the PDF
+
   return (
     <span className="tooltip">
-      <a
-        href={citation.filing_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{ fontSize: '0.8rem' }}
-      >
-        View Source
-      </a>
+      {isPdfSource ? (
+        <span style={{ fontSize: '0.8rem', color: '#666' }}>
+          {citation.statement || 'From PDF'}
+        </span>
+      ) : (
+        <a
+          href={citation.filing_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ fontSize: '0.8rem' }}
+        >
+          View Source
+        </a>
+      )}
       <span className="tooltip-text">
         {citation.statement && (
           <>
@@ -27,10 +39,18 @@ export function SourcePopover({ citation }: SourcePopoverProps) {
         <strong>Label:</strong><br />
         {citation.xbrl_label}<br /><br />
         <strong>Form Type:</strong> {citation.form_type}<br />
-        <strong>Filing Date:</strong> {citation.filing_date}<br />
+        {citation.filing_date && (
+          <>
+            <strong>Filing Date:</strong> {citation.filing_date}<br />
+          </>
+        )}
         <strong>Period End:</strong> {citation.period_end}<br />
         <strong>Raw Value:</strong> {formatCurrency(citation.raw_value)}<br />
-        <strong>Accession:</strong> {citation.accession_number}
+        {citation.accession_number && (
+          <>
+            <strong>Accession:</strong> {citation.accession_number}
+          </>
+        )}
       </span>
     </span>
   );

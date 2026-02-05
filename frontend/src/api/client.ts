@@ -150,6 +150,30 @@ export async function extractData(ticker: string, model?: string): Promise<Extra
 }
 
 /**
+ * Extract financial data from uploaded 10-K PDF.
+ */
+export async function extractDataFromPDF(file: File, model?: string): Promise<ExtractResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (model) {
+    formData.append('model', model);
+  }
+
+  const response = await fetch(`${API_BASE}/extract-pdf`, {
+    method: 'POST',
+    body: formData,
+    // No Content-Type header - browser sets multipart boundary automatically
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to extract data from PDF');
+  }
+
+  return response.json();
+}
+
+/**
  * Approve extraction with optional edits.
  */
 export async function approveExtraction(
