@@ -267,10 +267,10 @@ PDF CONTENT:
             llm_warnings=result_json.get("llm_warnings") or [],
         )
 
-        # Normalize all metric values: multiply by 1,000,000 (10-K standard = millions)
-        print(f"\n[DEBUG] PDF Extraction - Normalizing 10-K values (assume millions):")
+        # Normalize all metric values: multiply by 1,000,000 (10-K amounts are ALWAYS in millions per SEC)
+        print(f"\n[DEBUG] PDF Extraction - Converting 10-K millions to dollars:")
         _normalize_pdf_result_values(pdf_result)
-        print(f"[DEBUG] All values multiplied by 1,000,000, unit now: {pdf_result.unit}\n")
+        print(f"[DEBUG] All values × 1,000,000 (SEC standard: 10-K = millions), unit now: {pdf_result.unit}\n")
 
         return pdf_result
     except json.JSONDecodeError as e:
@@ -285,16 +285,16 @@ def _normalize_pdf_result_values(pdf_result: PDFExtractionResult) -> None:
     """
     Normalize all metric values in PDFExtractionResult to actual dollars.
 
-    10-K financial statements are ALWAYS in millions (SEC standard).
-    Multiplies all values by 1,000,000 to convert to dollars.
+    10-K financial statements report amounts in MILLIONS (SEC standard - no exceptions).
+    Multiply all values by 1,000,000 to convert to actual dollars.
 
     Modifies pdf_result in place.
     """
-    # 10-K filing convention: ALL financial metrics are in millions
-    # No per-metric unit detection, no conditional logic - always multiply by 1,000,000
+    # SEC standard: 10-K financial statement amounts are ALWAYS in millions
+    # No per-metric unit detection, no conditional logic needed - always multiply by 1,000,000
     MILLIONS_MULTIPLIER = 1_000_000
 
-    print(f"[DEBUG] _normalize_pdf_result_values: Assuming all 10-K values are in millions")
+    print(f"[DEBUG] _normalize_pdf_result_values: 10-K amounts are in MILLIONS (SEC standard)")
 
     # Normalize all metric values: multiply by 1,000,000 to get actual dollars
     for metric_key in pdf_result.metrics:

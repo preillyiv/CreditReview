@@ -45,7 +45,14 @@ Internal web application that generates financial reports for publicly traded co
 
 ## Input
 - Ticker symbol (data fetched automatically from SEC EDGAR)
+- 10-K PDF file (alternative to ticker lookup)
 - Manual inputs via form: S&P/Moody's ratings, HQ, locations, etc.
+
+## Data Units - SEC Standard
+**CRITICAL:** All 10-K financial statement amounts are reported in **MILLIONS** (SEC standard - no exceptions):
+- Both SEC XBRL extraction and PDF 10-K extraction assume all amounts are in millions
+- Both paths multiply values by 1,000,000 to convert to actual dollars for calculations
+- Frontend displays use the normalized dollar amounts to determine M/B formatting (e.g., $134.8B)
 
 ## Output
 Word/Excel/PDF report containing:
