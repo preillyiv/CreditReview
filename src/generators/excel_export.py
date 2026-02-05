@@ -108,14 +108,21 @@ def _create_raw_values_sheet(wb: Workbook, session: ExtractionSession):
     """Create the Raw Values sheet with source citations."""
     ws = wb.create_sheet("Raw Values")
 
-    # Headers
+    # Add unit note if not in dollars
+    if session.unit and session.unit.lower() != "dollars":
+        note_cell = ws.cell(row=1, column=1, value=f"All figures are in {session.unit}")
+        note_cell.font = Font(italic=True, color="808080", size=10)
+        ws.row_dimensions[1].height = 20
+
+    # Headers (starting at row 2 or 1 depending on unit note)
+    header_row = 2 if (session.unit and session.unit.lower() != "dollars") else 1
     headers = ["Metric", "Current Value", "Prior Value", "XBRL Concept", "Filing Date", "SEC Link"]
     for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=1, column=col, value=header)
+        cell = ws.cell(row=header_row, column=col, value=header)
         _apply_header_style(cell)
 
     # Data rows
-    row = 2
+    row = header_row + 1
     for metric_key, ev in session.raw_values.items():
         ws.cell(row=row, column=1, value=ev.display_name)
         ws.cell(row=row, column=2, value=ev.value)

@@ -212,6 +212,9 @@ function App() {
           <div className="card">
             <h3>Review Extracted Values</h3>
             <p className="text-sm text-muted mb-2">
+              {extractResult.unit && extractResult.unit !== 'dollars' && (
+                <>All figures are in <strong>{extractResult.unit}</strong>. </>
+              )}
               Click any value to edit. {extractResult.ticker ? 'Click the source link to view the SEC filing.' : 'Source information is shown for each value.'}
             </p>
             <ReviewTable
