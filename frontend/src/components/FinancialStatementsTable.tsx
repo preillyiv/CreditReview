@@ -117,19 +117,21 @@ function StatementTable({
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
         <thead>
           <tr style={{ backgroundColor: '#1f4e79', color: 'white' }}>
-            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'left' }}>Item</th>
-            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', minWidth: '100px' }}>
-              FY {getFiscalYear(fiscalYearEnd)}
-            </th>
-            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', minWidth: '100px' }}>
-              FY {getFiscalYear(fiscalYearEndPrior)}
-            </th>
-            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', minWidth: '100px' }}>
-              Delta
-            </th>
-            <th style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center', minWidth: '80px' }}>
-              Source
-            </th>
+            {['Item', `FY ${getFiscalYear(fiscalYearEnd)}`, `FY ${getFiscalYear(fiscalYearEndPrior)}`, 'Delta', 'Source'].map(
+              (header, idx) => (
+                <th
+                  key={header}
+                  style={{
+                    padding: '0.75rem',
+                    border: '1px solid #ddd',
+                    textAlign: idx === 0 ? 'left' : 'center',
+                    minWidth: idx === 0 ? 'auto' : idx === 4 ? '80px' : '100px',
+                  }}
+                >
+                  {header}
+                </th>
+              )
+            )}
           </tr>
         </thead>
         <tbody>
