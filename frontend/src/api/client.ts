@@ -269,9 +269,11 @@ export async function exportPdf(
 }
 
 /**
- * Format a number for display.
+ * Format a number for display as currency with appropriate scale suffix (M for millions, B for billions).
+ * @param value - The numeric value in dollars (after backend normalization)
+ * @param unit - The original unit for context (not used in formatting, included for consistency)
  */
-export function formatCurrency(value: number): string {
+export function formatCurrency(value: number, unit?: string): string {
   if (Math.abs(value) >= 1e9) {
     return `$${(value / 1e9).toFixed(1)}B`;
   } else if (Math.abs(value) >= 1e6) {

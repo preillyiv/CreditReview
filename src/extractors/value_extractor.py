@@ -57,6 +57,9 @@ def extract_values_with_citations(
     session.llm_notes = mapping_result.llm_notes
     session.llm_warnings = mapping_result.llm_warnings
 
+    # Detect unit from XBRL data (SEC EDGAR 10-K filings report in millions)
+    session.unit = _detect_unit_from_xbrl(raw_data)
+
     # Extract values for each mapped metric
     for metric_key, concept_mapping in mapping_result.mapped.items():
         extracted = _extract_metric_value(
@@ -353,3 +356,48 @@ def print_extraction_summary(session: ExtractionSession) -> None:
         print("-" * 70)
         for warning in session.llm_warnings:
             print(f"  ⚠ {warning}")
+
+
+def _detect_unit_from_xbrl(raw_data: dict) -> str:
+    """
+    Detect the unit of financial data from XBRL.
+
+    SEC EDGAR 10-K filings report financial statement items in millions.
+    This function inspects the raw XBRL data to detect the unit being used.
+
+    Args:
+        raw_data: Raw SEC EDGAR XBRL data
+
+    Returns:
+        Unit string: "millions", "thousands", "billions", or "dollars"
+    """
+    # Look for units in the XBRL data
+    taxonomy_data = raw_data.get("facts", {}).get("us-gaap", {})
+
+    # Sample some common financial statement concepts to detect unit
+    unit_counts = {}
+    sample_concepts = ["Assets", "Revenue", "NetIncomeLoss", "Equity", "Liabilities"]
+
+    for concept_name, concept_data in taxonomy_data.items():
+        if any(sample in concept_name for sample in sample_concepts):
+            for unit_type in concept_data.get("units", {}).keys():
+                unit_counts[unit_type] = unit_counts.get(unit_type, 0) + 1
+
+    # Most common unit is likely the right one
+    if unit_counts:
+        most_common_unit = max(unit_counts, key=unit_counts.get)
+
+        # Map SEC EDGAR units to our unit names
+        # SEC 10-K filings typically use "USD" for millions
+        if most_common_unit.upper() in ["USD", "PURE", "SHARES"]:
+            # For 10-K filings, USD typically means millions
+            return "millions"
+        elif "MIL" in most_common_unit.upper():
+            return "millions"
+        elif "THO" in most_common_unit.upper():
+            return "thousands"
+        elif "BIL" in most_common_unit.upper():
+            return "billions"
+
+    # Default to millions (most common for 10-K filings)
+    return "millions"

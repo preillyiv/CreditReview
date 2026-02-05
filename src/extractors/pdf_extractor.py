@@ -8,6 +8,7 @@ This module handles:
 """
 
 import json
+import re
 from dataclasses import dataclass
 from io import BytesIO
 import pdfplumber
@@ -18,6 +19,39 @@ from src.extractors.session_builder import (
     NormalizedExtractionData,
     NormalizedMetric,
 )
+
+
+def normalize_unit(unit_str: str) -> str:
+    """
+    Normalize any unit string to a standard format.
+
+    Handles variations like:
+    - "millions", "million", "mil", "m", "M"
+    - "thousands", "thousand", "thou", "k", "K"
+    - "billions", "billion", "bil", "b", "B"
+    - "dollars", "dollar", etc. -> "dollars"
+
+    Returns one of: "billions", "millions", "thousands", "dollars"
+    """
+    if not unit_str:
+        return "dollars"
+
+    unit_lower = unit_str.lower().strip()
+
+    # Check for billions (order matters - check full words first)
+    if re.search(r'\b(billion|bil|b)\b', unit_lower):
+        return "billions"
+
+    # Check for millions
+    if re.search(r'\b(million|mil|m)\b', unit_lower):
+        return "millions"
+
+    # Check for thousands
+    if re.search(r'\b(thousand|thou|k)\b', unit_lower):
+        return "thousands"
+
+    # Default to dollars
+    return "dollars"
 
 
 @dataclass
@@ -111,8 +145,25 @@ CREDIT RATINGS (if mentioned anywhere in the document):
 - S&P rating and outlook
 - Moody's rating and outlook
 
-EXTRACTION RULES:
-- IMPORTANT: Report the unit/scale of each metric (e.g., "millions", "thousands", "dollars")
+EXTRACTION RULES - UNIT DETECTION (CRITICAL):
+1. FIRST: Search the ENTIRE document for text indicating the scale/unit (e.g., "in millions", "in thousands", "all amounts in", "except per share")
+2. Note: Different sections of a 10-K may use DIFFERENT scales:
+   - Main financial statements: often MILLIONS
+   - Footnotes, details, EPS: often THOUSANDS or DOLLARS
+   - Per-share amounts: DOLLARS (e.g., earnings per share)
+3. For each metric:
+   - If you found it in a section with explicit scale text, use that scale for JUST THAT METRIC
+   - Include a "unit" field in that metric if it differs from the global default
+   - Example: revenue might be "millions" but EPS might be "dollars"
+4. If NOT found explicitly, apply these rules:
+   - For 10-K main statements: Assume MILLIONS (standard SEC convention)
+   - 5+ digit numbers = millions (e.g., $134,788 = 134,788 million)
+   - Per-share metrics = dollars
+   - Small numbers (< 1000) = dollars
+
+OTHER RULES:
+- Report SCALE/MAGNITUDE ("millions", "thousands", "dollars"), NOT the currency symbol ($)
+- The "$" symbol indicates USD currency, not the scale
 - For each metric, provide BOTH current year and prior year values
 - Include the page number where each value was found
 - If a metric appears in multiple places, use the most recent/authoritative source
@@ -124,11 +175,12 @@ Return ONLY valid JSON (no markdown, no extra text):
   "ticker": "string (or empty if not found)",
   "fiscal_year_end": "YYYY-MM-DD",
   "fiscal_year_end_prior": "YYYY-MM-DD",
-  "unit": "string (e.g., 'millions', 'thousands', 'dollars' - for all financial metrics)",
+  "unit": "string (e.g., 'millions' - default unit if not specified per metric)",
   "metrics": {{
     "metric_key": {{
-      "value": number (in the unit specified above),
-      "value_prior": number (in the unit specified above),
+      "value": number,
+      "value_prior": number,
+      "unit": "string (optional - use if this metric has a different unit than the default)",
       "page_number": number (0-indexed page where found),
       "source_text": "brief quote or location description"
     }},
@@ -193,12 +245,19 @@ PDF CONTENT:
             raise ValueError(f"Expected JSON object, got {type(result_json).__name__}")
 
         # Parse result into PDFExtractionResult with defaults
-        return PDFExtractionResult(
+        # NOTE: For 10-K filings, always use "millions" as the default unit (SEC standard)
+        # If LLM returns "dollars", override it - 10-K financial statements are always in millions
+        llm_unit = result_json.get("unit") or "dollars"
+        if llm_unit.lower().strip() == "dollars":
+            # 10-K filing convention: financial metrics are in millions, not dollars
+            llm_unit = "millions"
+
+        pdf_result = PDFExtractionResult(
             company_name=result_json.get("company_name") or "Unknown",
             ticker=result_json.get("ticker") or "",
             fiscal_year_end=result_json.get("fiscal_year_end") or "",
             fiscal_year_end_prior=result_json.get("fiscal_year_end_prior") or "",
-            unit=result_json.get("unit") or "dollars",  # Default to dollars if not specified
+            unit=normalize_unit(llm_unit),  # Normalize to standard format
             metrics=result_json.get("metrics") or {},
             company_info=result_json.get("company_info") or {},
             credit_ratings=result_json.get("credit_ratings") or {},
@@ -207,12 +266,80 @@ PDF CONTENT:
             llm_notes=result_json.get("llm_notes") or [],
             llm_warnings=result_json.get("llm_warnings") or [],
         )
+
+        # Normalize all values to actual dollars immediately
+        print(f"\n[DEBUG] PDF Extraction - Before normalization:")
+        print(f"  Unit detected: {pdf_result.unit}")
+        if pdf_result.metrics:
+            # Show a few sample metrics
+            for i, (key, metric) in enumerate(list(pdf_result.metrics.items())[:3]):
+                val = metric.get('value', 'N/A')
+                unit = metric.get('unit', 'global')
+                print(f"  {key}: value={val}, unit={unit}")
+
+        _normalize_pdf_result_values(pdf_result)
+
+        print(f"[DEBUG] PDF Extraction - After normalization:")
+        print(f"  Unit: {pdf_result.unit}")
+        if pdf_result.metrics:
+            for i, (key, metric) in enumerate(list(pdf_result.metrics.items())[:3]):
+                val = metric.get('value', 'N/A')
+                unit = metric.get('unit', 'N/A (deleted)')
+                print(f"  {key}: value={val}")
+        print()
+
+        return pdf_result
     except json.JSONDecodeError as e:
         # Show first 200 chars of response for debugging
         preview = result_text[:200] if 'result_text' in locals() else "No response"
         raise ValueError(f"LLM response was not valid JSON: {str(e)}. Response preview: {preview}")
     except Exception as e:
         raise ValueError(f"LLM extraction failed: {str(e)}")
+
+
+def _normalize_pdf_result_values(pdf_result: PDFExtractionResult) -> None:
+    """
+    Normalize all metric values in PDFExtractionResult to actual dollars.
+
+    Multiplies values by the appropriate multiplier based on the unit.
+    Supports per-metric units (if a metric specifies its own unit, use that;
+    otherwise use the global unit).
+
+    Modifies pdf_result in place.
+    """
+    # Determine multiplier based on standardized unit
+    multiplier_map = {
+        "billions": 1_000_000_000,
+        "millions": 1_000_000,
+        "thousands": 1_000,
+        "dollars": 1,
+    }
+
+    original_unit = pdf_result.unit
+    print(f"[DEBUG] _normalize_pdf_result_values: global unit='{original_unit}'")
+
+    # Normalize all metric values
+    for metric_key in pdf_result.metrics:
+        metric = pdf_result.metrics[metric_key]
+        if isinstance(metric, dict):
+            # Check if this metric has its own unit, otherwise use global unit
+            metric_unit = metric.get("unit", pdf_result.unit).lower().strip()
+            multiplier = multiplier_map.get(metric_unit, 1)
+
+            if "value" in metric and isinstance(metric["value"], (int, float)):
+                if multiplier != 1:
+                    print(f"[DEBUG]   {metric_key}: unit='{metric_unit}', multiplier={multiplier}, before={metric['value']}", end="")
+                    metric["value"] *= multiplier
+                    print(f", after={metric['value']}")
+            if "value_prior" in metric and isinstance(metric["value_prior"], (int, float)):
+                if multiplier != 1:
+                    metric["value_prior"] *= multiplier
+            # Remove the per-metric unit since we've normalized
+            if "unit" in metric:
+                del metric["unit"]
+
+    # Update global unit to dollars (values are now in dollars, not original unit)
+    pdf_result.unit = "dollars"
 
 
 def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionData:
@@ -229,8 +356,13 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
             continue  # Skip unknown metrics
 
         try:
-            value = float(metric_data.get("value", 0)) if metric_data.get("value") else 0.0
-            value_prior = float(metric_data.get("value_prior", 0)) if metric_data.get("value_prior") else 0.0
+            # Safely convert values to float, handling None, empty strings, and zero
+            raw_value = metric_data.get("value")
+            value = float(raw_value) if raw_value is not None and raw_value != "" else 0.0
+
+            raw_value_prior = metric_data.get("value_prior")
+            value_prior = float(raw_value_prior) if raw_value_prior is not None and raw_value_prior != "" else 0.0
+
             page_num = metric_data.get("page_number", 0)
             source_text = metric_data.get("source_text", "")
 
@@ -250,6 +382,7 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
                 period_end=pdf_result.fiscal_year_end,
                 period_end_prior=pdf_result.fiscal_year_end_prior,
                 unit=pdf_result.unit,  # Pass through the unit from PDF
+                statement=source_desc,  # For PDF: source_desc is "Page X of PDF"
             )
         except (ValueError, TypeError):
             # Skip metrics with invalid values

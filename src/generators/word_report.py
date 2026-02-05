@@ -1,5 +1,6 @@
 """Word document report generation."""
 
+import re
 from pathlib import Path
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
@@ -18,6 +19,45 @@ HEADER_BLUE = "4472C4"
 GREEN_BG = "C6EFCE"
 RED_BG = "FFC7CE"
 LIGHT_GRAY = "F2F2F2"
+
+
+def add_formatted_paragraph(doc: Document, text: str, level: int = None):
+    """
+    Add a paragraph with markdown formatting support.
+    Supports:
+    - ## Heading (level 2)
+    - ### Heading (level 3)
+    - **bold**
+    - *italic*
+    """
+    # Check if this is a heading
+    heading_match = re.match(r'^(#{1,6})\s+(.+)$', text)
+    if heading_match:
+        heading_level = len(heading_match.group(1))
+        heading_text = heading_match.group(2)
+        doc.add_heading(heading_text, level=heading_level)
+        return
+
+    # Regular paragraph with inline formatting
+    para = doc.add_paragraph()
+
+    # Parse inline formatting: **bold** and *italic*
+    # Process **bold** first to avoid conflicts with *italic*
+    pattern = r'(\*\*[^*]+\*\*)|(\*[^*]+\*)|([^*]+)'
+
+    for match in re.finditer(pattern, text):
+        content = match.group(0)
+        if content.startswith('**') and content.endswith('**'):
+            # Bold text
+            run = para.add_run(content[2:-2])
+            run.bold = True
+        elif content.startswith('*') and content.endswith('*'):
+            # Italic text
+            run = para.add_run(content[1:-1])
+            run.italic = True
+        else:
+            # Regular text
+            para.add_run(content)
 
 
 def set_cell_shading(cell, color_hex: str):
@@ -329,10 +369,15 @@ def add_company_overview(doc: Document, company_info: CompanyInfo, narrative: st
     info_para.add_run(f"Industry: ").bold = True
     info_para.add_run(company_info.industry)
 
-    # Narrative
+    # Narrative with markdown formatting support
     if narrative:
         doc.add_paragraph()
-        doc.add_paragraph(narrative)
+        # Split narrative into lines and process each
+        for line in narrative.split('\n'):
+            if line.strip():
+                add_formatted_paragraph(doc, line.strip())
+            else:
+                doc.add_paragraph()
 
     doc.add_paragraph()
 

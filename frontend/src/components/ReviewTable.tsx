@@ -9,6 +9,8 @@ interface ReviewTableProps {
   editedValues: Record<string, EditedValue>;
   onValueChange: (metricKey: string, value: number | undefined, isPrior: boolean) => void;
   onResetValue?: (metricKey: string, isPrior: boolean) => void;
+  isSECData?: boolean;
+  unit?: string;
 }
 
 export function ReviewTable({
@@ -18,6 +20,8 @@ export function ReviewTable({
   editedValues,
   onValueChange,
   onResetValue,
+  isSECData = true,
+  unit,
 }: ReviewTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -189,7 +193,7 @@ export function ReviewTable({
               <td style={{ textAlign: 'center', backgroundColor: delta >= 0 ? '#d4edda' : '#f8d7da' }}>
                 {formatCurrency(delta)}
               </td>
-              <td style={{ textAlign: 'left' }}>
+              <td style={{ textAlign: 'center' }}>
                 {ev.citation && <SourcePopover citation={ev.citation} />}
               </td>
             </tr>

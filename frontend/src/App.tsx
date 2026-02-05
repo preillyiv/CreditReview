@@ -23,6 +23,7 @@ function App() {
   const [extractResult, setExtractResult] = useState<ExtractResponse | null>(null);
   const [approveResult, setApproveResult] = useState<ApproveResponse | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, EditedValue>>({});
+  const [inputMode, setInputMode] = useState<InputMode>('ticker');
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingWord, setExportingWord] = useState(false);
 
@@ -30,6 +31,7 @@ function App() {
     setState('extracting');
     setError(null);
     setEditedValues({});
+    setInputMode(mode);
 
     try {
       let result: ExtractResponse;
@@ -212,10 +214,7 @@ function App() {
           <div className="card">
             <h3>Review Extracted Values</h3>
             <p className="text-sm text-muted mb-2">
-              {extractResult.unit && extractResult.unit !== 'dollars' && (
-                <>All figures are in <strong>{extractResult.unit}</strong>. </>
-              )}
-              Click any value to edit. {extractResult.ticker ? 'Click the source link to view the SEC filing.' : 'Source information is shown for each value.'}
+              Click any value to edit. {inputMode === 'ticker' ? 'Click the source link to view the SEC filing.' : 'Source information is shown for each value.'}
             </p>
             <ReviewTable
               rawValues={extractResult.raw_values}
@@ -224,6 +223,8 @@ function App() {
               editedValues={editedValues}
               onValueChange={handleValueChange}
               onResetValue={handleResetValue}
+              isSECData={inputMode === 'ticker'}
+              unit={extractResult.unit}
             />
           </div>
 
@@ -296,6 +297,7 @@ function App() {
             ratios={approveResult.ratios}
             fiscalYearEnd={extractResult.fiscal_year_end}
             fiscalYearEndPrior={extractResult.fiscal_year_end_prior}
+            unit={extractResult.unit}
           />
 
           <ExportButtons

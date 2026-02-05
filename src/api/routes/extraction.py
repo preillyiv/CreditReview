@@ -19,6 +19,7 @@ from src.extractors.session_builder import (
     NormalizedMetric,
     build_extraction_session,
 )
+from src.extractors.pdf_extractor import normalize_unit
 from src.calculators.metrics import calculate_metrics_from_raw, FinancialMetrics
 from src.calculators.ratios import calculate_ratios_from_raw, FinancialRatios
 from src.models.extraction import ExtractionSession, CalculationStep
@@ -183,6 +184,43 @@ class ApproveResponse(BaseModel):
 
 
 # ============== Helper Functions ==============
+
+def _normalize_session_to_dollars(session: ExtractionSession) -> None:
+    """
+    Normalize all financial values in session to actual dollars based on unit.
+
+    This converts values like "5.2" (in millions) to "5200000" (in dollars),
+    so downstream calculations and displays use consistent units.
+
+    Modifies the session in place.
+    """
+    # First, normalize the unit string to a standard format
+    normalized_unit = normalize_unit(session.unit)
+
+    # Determine multiplier based on standardized unit
+    multiplier_map = {
+        "billions": 1_000_000_000,
+        "millions": 1_000_000,
+        "thousands": 1_000,
+        "dollars": 1,
+    }
+
+    multiplier = multiplier_map.get(normalized_unit, 1)
+
+    # If already in dollars (multiplier is 1), no conversion needed
+    if multiplier == 1:
+        session.unit = "dollars"
+        return
+
+    # Normalize all raw values
+    for metric_key in session.raw_values:
+        metric = session.raw_values[metric_key]
+        metric.value *= multiplier
+        metric.value_prior *= multiplier
+
+    # Update unit to dollars
+    session.unit = "dollars"
+
 
 def _session_to_extract_response(session: ExtractionSession) -> ExtractResponse:
     """Convert ExtractionSession to API response."""
@@ -357,6 +395,7 @@ def _xbrl_to_normalized(
     llm_model: str,
     llm_notes: list,
     llm_warnings: list,
+    unit: str = "dollars",
 ) -> NormalizedExtractionData:
     """
     Convert XBRL extraction result to normalized format.
@@ -370,6 +409,8 @@ def _xbrl_to_normalized(
     for metric_key, extracted_value in raw_values.items():
         source_desc = extracted_value.citation.xbrl_concept if extracted_value.citation else "Unknown"
         source_url = extracted_value.citation.filing_url if extracted_value.citation else ""
+        # Preserve the statement field from SEC extraction (e.g., "Income Statement", "Balance Sheet")
+        statement = extracted_value.citation.statement if extracted_value.citation else ""
 
         metrics[metric_key] = NormalizedMetric(
             metric_key=metric_key,
@@ -381,6 +422,7 @@ def _xbrl_to_normalized(
             form_type="10-K",
             period_end=fiscal_year_end,
             period_end_prior=fiscal_year_end_prior,
+            statement=statement,
         )
 
     # Extract not_found metric keys
@@ -395,6 +437,7 @@ def _xbrl_to_normalized(
         metrics=metrics,
         unmapped_notes=[],  # Not tracked by XBRL path
         not_found=not_found_keys,
+        unit=unit,  # Pass through the unit from XBRL extraction
         llm_model=llm_model,
         llm_notes=llm_notes,
         llm_warnings=llm_warnings,
@@ -486,10 +529,14 @@ async def extract(request: ExtractRequest) -> ExtractResponse:
         llm_model=llm_model,
         llm_notes=temp_session.llm_notes,
         llm_warnings=temp_session.llm_warnings,
+        unit=temp_session.unit,  # Pass the unit detected by LLM extraction
     )
 
     # Step 6: Use shared builder to create session (same as PDF path)
     session = build_extraction_session(normalized)
+
+    # Step 7: Normalize all values to actual dollars immediately (no intermediate unit)
+    _normalize_session_to_dollars(session)
 
     # Store session and raw data for later
     _sessions[session.session_id] = session
@@ -557,6 +604,24 @@ async def extract_pdf(
     # Use shared builder (same as ticker path!)
     session = build_extraction_session(normalized)
 
+    print(f"\n[DEBUG] API /extract-pdf - Before _normalize_session_to_dollars:")
+    print(f"  session.unit: {session.unit}")
+    if session.raw_values:
+        first_key = list(session.raw_values.keys())[0]
+        first_val = session.raw_values[first_key]
+        print(f"  Sample raw value ({first_key}): {first_val.value}")
+
+    # Normalize all values to actual dollars immediately (no intermediate unit)
+    _normalize_session_to_dollars(session)
+
+    print(f"[DEBUG] API /extract-pdf - After _normalize_session_to_dollars:")
+    print(f"  session.unit: {session.unit}")
+    if session.raw_values:
+        first_key = list(session.raw_values.keys())[0]
+        first_val = session.raw_values[first_key]
+        print(f"  Sample raw value ({first_key}): {first_val.value}")
+    print()
+
     # Store session
     _sessions[session.session_id] = session
 
@@ -589,6 +654,9 @@ async def approve(request: ApproveRequest) -> ApproveResponse:
             session.set_raw_value(edit.metric_key, edit.value, prior=False)
         if edit.value_prior is not None:
             session.set_raw_value(edit.metric_key, edit.value_prior, prior=True)
+
+    # Normalize all values to actual dollars so calculations are consistent
+    _normalize_session_to_dollars(session)
 
     # Mark as approved
     session.is_approved = True

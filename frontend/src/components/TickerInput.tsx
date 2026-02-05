@@ -60,6 +60,10 @@ export function DataInput({ onSubmit }: DataInputProps) {
     }
   };
 
+  const clearFile = () => {
+    setFile(null);
+  };
+
   return (
     <div>
       {/* Model selector at top */}
@@ -134,11 +138,11 @@ export function DataInput({ onSubmit }: DataInputProps) {
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           style={{
-            border: `2px dashed ${dragOver ? '#4a90e2' : '#ccc'}`,
+            border: `2px ${file ? 'solid' : 'dashed'} ${file ? '#27ae60' : dragOver ? '#4a90e2' : '#ccc'}`,
             borderRadius: '8px',
             padding: '2rem',
             textAlign: 'center',
-            backgroundColor: dragOver ? 'rgba(74, 144, 226, 0.05)' : '#f9f9f9',
+            backgroundColor: file ? 'rgba(39, 174, 96, 0.08)' : dragOver ? 'rgba(74, 144, 226, 0.05)' : '#f9f9f9',
             transition: 'all 0.2s ease',
             cursor: 'pointer',
             marginBottom: '1rem',
@@ -152,15 +156,32 @@ export function DataInput({ onSubmit }: DataInputProps) {
             style={{ display: 'none' }}
           />
           <label htmlFor="pdf-file-input" style={{ cursor: 'pointer', display: 'block' }}>
-            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📄</div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 500, marginBottom: '0.25rem' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>
+              {file ? '✓' : '📄'}
+            </div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 500, marginBottom: '0.25rem', color: file ? '#27ae60' : 'inherit' }}>
               {file ? file.name : 'Drop PDF here or click to browse'}
             </div>
-            <p className="text-sm text-muted" style={{ margin: '0.25rem 0' }}>
-              or drag and drop a 10-K PDF file
-            </p>
+            {!file && (
+              <p className="text-sm text-muted" style={{ margin: '0.25rem 0' }}>
+                or drag and drop a 10-K PDF file
+              </p>
+            )}
           </label>
         </div>
+
+        {file && (
+          <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={clearFile}
+              style={{ fontSize: '0.875rem', padding: '0.4em 1em' }}
+            >
+              Change File
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handlePdfSubmit}>
           <button type="submit" className="primary" disabled={!file} style={{ width: '100%' }}>

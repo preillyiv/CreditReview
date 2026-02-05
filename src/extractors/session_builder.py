@@ -32,6 +32,7 @@ class NormalizedMetric:
     period_end: str              # "2024-12-31"
     period_end_prior: str        # "2023-12-31"
     unit: str = "dollars"        # Unit of the value (e.g., "millions", "thousands", "dollars")
+    statement: str = ""          # Which financial statement (e.g., "Income Statement", "Balance Sheet")
 
 
 @dataclass
@@ -73,8 +74,10 @@ def build_extraction_session(data: NormalizedExtractionData) -> ExtractionSessio
 
     # Convert normalized metrics to ExtractedValue with citations
     for metric_key, norm_metric in data.metrics.items():
-        # For PDF sources, put page info in statement field
-        statement_field = norm_metric.source_description if not norm_metric.source_url else ""
+        # Use the statement field from NormalizedMetric (populated by each extraction path)
+        # For SEC: contains "Income Statement", "Balance Sheet", etc.
+        # For PDF: contains "Page X of PDF", etc.
+        statement_field = norm_metric.statement
 
         citation = SourceCitation(
             xbrl_concept=norm_metric.source_description,
