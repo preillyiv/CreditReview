@@ -267,26 +267,10 @@ PDF CONTENT:
             llm_warnings=result_json.get("llm_warnings") or [],
         )
 
-        # Normalize all values to actual dollars immediately
-        print(f"\n[DEBUG] PDF Extraction - Before normalization:")
-        print(f"  Unit detected: {pdf_result.unit}")
-        if pdf_result.metrics:
-            # Show a few sample metrics
-            for i, (key, metric) in enumerate(list(pdf_result.metrics.items())[:3]):
-                val = metric.get('value', 'N/A')
-                unit = metric.get('unit', 'global')
-                print(f"  {key}: value={val}, unit={unit}")
-
+        # Normalize all metric values: multiply by 1,000,000 (10-K standard = millions)
+        print(f"\n[DEBUG] PDF Extraction - Normalizing 10-K values (assume millions):")
         _normalize_pdf_result_values(pdf_result)
-
-        print(f"[DEBUG] PDF Extraction - After normalization:")
-        print(f"  Unit: {pdf_result.unit}")
-        if pdf_result.metrics:
-            for i, (key, metric) in enumerate(list(pdf_result.metrics.items())[:3]):
-                val = metric.get('value', 'N/A')
-                unit = metric.get('unit', 'N/A (deleted)')
-                print(f"  {key}: value={val}")
-        print()
+        print(f"[DEBUG] All values multiplied by 1,000,000, unit now: {pdf_result.unit}\n")
 
         return pdf_result
     except json.JSONDecodeError as e:
@@ -301,44 +285,34 @@ def _normalize_pdf_result_values(pdf_result: PDFExtractionResult) -> None:
     """
     Normalize all metric values in PDFExtractionResult to actual dollars.
 
-    Multiplies values by the appropriate multiplier based on the unit.
-    Supports per-metric units (if a metric specifies its own unit, use that;
-    otherwise use the global unit).
+    10-K financial statements are ALWAYS in millions (SEC standard).
+    Multiplies all values by 1,000,000 to convert to dollars.
 
     Modifies pdf_result in place.
     """
-    # Determine multiplier based on standardized unit
-    multiplier_map = {
-        "billions": 1_000_000_000,
-        "millions": 1_000_000,
-        "thousands": 1_000,
-        "dollars": 1,
-    }
+    # 10-K filing convention: ALL financial metrics are in millions
+    # No per-metric unit detection, no conditional logic - always multiply by 1,000,000
+    MILLIONS_MULTIPLIER = 1_000_000
 
-    original_unit = pdf_result.unit
-    print(f"[DEBUG] _normalize_pdf_result_values: global unit='{original_unit}'")
+    print(f"[DEBUG] _normalize_pdf_result_values: Assuming all 10-K values are in millions")
 
-    # Normalize all metric values
+    # Normalize all metric values: multiply by 1,000,000 to get actual dollars
     for metric_key in pdf_result.metrics:
         metric = pdf_result.metrics[metric_key]
         if isinstance(metric, dict):
-            # Check if this metric has its own unit, otherwise use global unit
-            metric_unit = metric.get("unit", pdf_result.unit).lower().strip()
-            multiplier = multiplier_map.get(metric_unit, 1)
+            if "value" in metric and isinstance(metric["value"], (int, float)) and metric["value"] != 0:
+                original = metric["value"]
+                metric["value"] *= MILLIONS_MULTIPLIER
+                print(f"[DEBUG]   {metric_key}: {original} million -> ${metric['value']:,.0f}")
 
-            if "value" in metric and isinstance(metric["value"], (int, float)):
-                if multiplier != 1:
-                    print(f"[DEBUG]   {metric_key}: unit='{metric_unit}', multiplier={multiplier}, before={metric['value']}", end="")
-                    metric["value"] *= multiplier
-                    print(f", after={metric['value']}")
-            if "value_prior" in metric and isinstance(metric["value_prior"], (int, float)):
-                if multiplier != 1:
-                    metric["value_prior"] *= multiplier
-            # Remove the per-metric unit since we've normalized
+            if "value_prior" in metric and isinstance(metric["value_prior"], (int, float)) and metric["value_prior"] != 0:
+                metric["value_prior"] *= MILLIONS_MULTIPLIER
+
+            # Remove any per-metric unit field - we've standardized everything
             if "unit" in metric:
                 del metric["unit"]
 
-    # Update global unit to dollars (values are now in dollars, not original unit)
+    # Update global unit to dollars (all values are now in actual dollars)
     pdf_result.unit = "dollars"
 
 
