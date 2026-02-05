@@ -9,6 +9,7 @@ This module handles:
 
 import json
 from dataclasses import dataclass
+from io import BytesIO
 import pdfplumber
 from anthropic import Anthropic
 
@@ -50,7 +51,9 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> dict[int, str]:
     """
     try:
         pdf_text = {}
-        with pdfplumber.open(pdf_bytes) as pdf:
+        # Wrap bytes in BytesIO to create a file-like object
+        pdf_file = BytesIO(pdf_bytes)
+        with pdfplumber.open(pdf_file) as pdf:
             for page_num, page in enumerate(pdf.pages):
                 text = page.extract_text()
                 if text:
