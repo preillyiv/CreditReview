@@ -78,15 +78,24 @@ export function ReviewTable({
     return dateStr.split('-')[0] || dateStr;
   };
 
+  // Metrics that should be bolded (subtotals/key lines)
+  const subtotalMetrics = new Set([
+    'gross_profit',
+    'operating_income',
+    'ebitda',
+    'adjusted_ebitda',
+    'net_income',
+  ]);
+
   return (
     <table>
       <thead>
         <tr>
-          <th>Metric</th>
-          <th className="text-right">FY {getFiscalYear(fiscalYearEnd)}</th>
-          <th className="text-right">FY {getFiscalYear(fiscalYearEndPrior)}</th>
-          <th className="text-right">Delta</th>
-          <th>Source</th>
+          <th style={{ textAlign: 'left' }}>Metric</th>
+          <th style={{ textAlign: 'center' }}>FY {getFiscalYear(fiscalYearEnd)}</th>
+          <th style={{ textAlign: 'center' }}>FY {getFiscalYear(fiscalYearEndPrior)}</th>
+          <th style={{ textAlign: 'center' }}>Delta</th>
+          <th style={{ textAlign: 'left' }}>Source</th>
         </tr>
       </thead>
       <tbody>
@@ -97,9 +106,11 @@ export function ReviewTable({
           const currentCellId = `${ev.metric_key}-current`;
           const priorCellId = `${ev.metric_key}-prior`;
 
+          const isBold = subtotalMetrics.has(ev.metric_key);
+
           return (
-            <tr key={ev.metric_key}>
-              <td>
+            <tr key={ev.metric_key} style={isBold ? { fontWeight: 'bold' } : {}}>
+              <td style={{ textAlign: 'left' }}>
                 <span className="tooltip">
                   {ev.display_name}
                   {ev.llm_reasoning && (
@@ -107,7 +118,7 @@ export function ReviewTable({
                   )}
                 </span>
               </td>
-              <td className="text-right">
+              <td style={{ textAlign: 'center' }}>
                 {editingCell === currentCellId ? (
                   <input
                     type="text"
@@ -141,7 +152,7 @@ export function ReviewTable({
                   </span>
                 )}
               </td>
-              <td className="text-right">
+              <td style={{ textAlign: 'center' }}>
                 {editingCell === priorCellId ? (
                   <input
                     type="text"
@@ -153,10 +164,10 @@ export function ReviewTable({
                       if (e.key === 'Escape') cancelEditing();
                     }}
                     autoFocus
-                    style={{ width: '100px', textAlign: 'right' }}
+                    style={{ width: '100px', textAlign: 'center' }}
                   />
                 ) : (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     <span
                       className={`editable-cell ${isEdited(ev.metric_key, true) ? 'edited-value' : ''}`}
                       onClick={() => startEditing(ev.metric_key, true, priorVal)}
@@ -175,10 +186,10 @@ export function ReviewTable({
                   </span>
                 )}
               </td>
-              <td className={`text-right ${delta >= 0 ? 'positive' : 'negative'}`}>
+              <td style={{ textAlign: 'center', backgroundColor: delta >= 0 ? '#d4edda' : '#f8d7da' }}>
                 {formatCurrency(delta)}
               </td>
-              <td>
+              <td style={{ textAlign: 'left' }}>
                 {ev.citation && <SourcePopover citation={ev.citation} />}
               </td>
             </tr>

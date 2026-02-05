@@ -50,6 +50,7 @@ export interface ExtractResponse {
   cik: string;
   fiscal_year_end: string;
   fiscal_year_end_prior: string;
+  unit: string;  // Unit of financial metrics (e.g., "millions", "thousands", "dollars")
   raw_values: Record<string, ExtractedValue>;
   unmapped_values: UnmappedValue[];
   not_found: NotFoundMetric[];
