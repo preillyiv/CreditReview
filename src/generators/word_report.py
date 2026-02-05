@@ -28,20 +28,36 @@ def set_cell_shading(cell, color_hex: str):
     cell._tc.get_or_add_tcPr().append(shading)
 
 
-def format_currency(value: float, use_millions: bool = True) -> str:
-    """Format a currency value with M/B suffix."""
+def format_currency(value: float, unit: str = "dollars") -> str:
+    """
+    Format a currency value based on the unit.
+
+    Args:
+        value: The numeric value
+        unit: The unit of the value ("dollars", "thousands", "millions", etc.)
+    """
     if value == 0:
         return "-"
 
-    abs_val = abs(value)
+    # Convert value to base dollars based on unit
+    unit_lower = unit.lower()
+    if "million" in unit_lower:
+        value_in_dollars = value * 1e6
+    elif "thousand" in unit_lower:
+        value_in_dollars = value * 1e3
+    else:  # dollars or unknown
+        value_in_dollars = value
+
+    # Format the result
+    abs_val = abs(value_in_dollars)
     if abs_val >= 1e9:
         formatted = f"${abs_val / 1e9:,.1f} B"
-    elif abs_val >= 1e6 or use_millions:
+    elif abs_val >= 1e6:
         formatted = f"${abs_val / 1e6:,.1f} M"
     else:
         formatted = f"${abs_val:,.0f}"
 
-    return f"-{formatted}" if value < 0 else formatted
+    return f"-{formatted}" if value_in_dollars < 0 else formatted
 
 
 def format_percentage(value: float) -> str:
@@ -58,7 +74,7 @@ def format_ratio(value: float) -> str:
     return f"{value:.2f}x"
 
 
-def format_delta(current: float, prior: float, is_percentage: bool = False, is_ratio: bool = False) -> tuple[str, str]:
+def format_delta(current: float, prior: float, unit: str = "dollars", is_percentage: bool = False, is_ratio: bool = False) -> tuple[str, str]:
     """
     Format a delta value and return (formatted_string, color).
     Color is 'green', 'red', or 'none'.
@@ -81,19 +97,27 @@ def format_delta(current: float, prior: float, is_percentage: bool = False, is_r
     elif is_ratio:
         formatted = f"{delta:+.2f}x"
     else:
-        # Currency
-        abs_delta = abs(delta)
+        # Currency - convert to base dollars first
+        unit_lower = unit.lower()
+        if "million" in unit_lower:
+            delta_in_dollars = delta * 1e6
+        elif "thousand" in unit_lower:
+            delta_in_dollars = delta * 1e3
+        else:
+            delta_in_dollars = delta
+
+        abs_delta = abs(delta_in_dollars)
         if abs_delta >= 1e9:
             formatted = f"${abs_delta / 1e9:,.1f} B"
         else:
             formatted = f"${abs_delta / 1e6:,.1f} M"
-        if delta < 0:
+        if delta_in_dollars < 0:
             formatted = f"-{formatted}"
 
     return formatted, color
 
 
-def add_financial_overview_table(doc: Document, metrics: FinancialMetrics, fiscal_year: str, prior_year: str):
+def add_financial_overview_table(doc: Document, metrics: FinancialMetrics, fiscal_year: str, prior_year: str, unit: str = "dollars"):
     """Add the Financial Statements Overview table."""
     doc.add_heading("Financial Statements Overview", level=2)
 
@@ -140,7 +164,7 @@ def add_financial_overview_table(doc: Document, metrics: FinancialMetrics, fisca
         if is_pct:
             cells[1].text = format_percentage(current)
         elif is_currency:
-            cells[1].text = format_currency(current)
+            cells[1].text = format_currency(current, unit=unit)
         else:
             cells[1].text = str(current)
 
@@ -148,12 +172,12 @@ def add_financial_overview_table(doc: Document, metrics: FinancialMetrics, fisca
         if is_pct:
             cells[2].text = format_percentage(prior)
         elif is_currency:
-            cells[2].text = format_currency(prior)
+            cells[2].text = format_currency(prior, unit=unit)
         else:
             cells[2].text = str(prior)
 
         # Delta
-        delta_str, color = format_delta(current, prior, is_percentage=is_pct)
+        delta_str, color = format_delta(current, prior, unit=unit, is_percentage=is_pct)
         cells[3].text = delta_str
 
         # Color the delta cell
@@ -170,7 +194,7 @@ def add_financial_overview_table(doc: Document, metrics: FinancialMetrics, fisca
     doc.add_paragraph()  # Spacing
 
 
-def add_ratios_table(doc: Document, ratios: FinancialRatios, fiscal_year: str, prior_year: str):
+def add_ratios_table(doc: Document, ratios: FinancialRatios, fiscal_year: str, prior_year: str, unit: str = "dollars"):
     """Add the Ratios table."""
     doc.add_heading("Ratios", level=2)
 
@@ -212,8 +236,8 @@ def add_ratios_table(doc: Document, ratios: FinancialRatios, fiscal_year: str, p
 
         # Current/Prior values
         if is_currency:
-            cells[1].text = format_currency(current)
-            cells[2].text = format_currency(prior)
+            cells[1].text = format_currency(current, unit=unit)
+            cells[2].text = format_currency(prior, unit=unit)
         elif "Days" in label:
             cells[1].text = f"{current:.1f}" if current else "-"
             cells[2].text = f"{prior:.1f}" if prior else "-"
@@ -224,7 +248,7 @@ def add_ratios_table(doc: Document, ratios: FinancialRatios, fiscal_year: str, p
         # Delta
         delta = current - prior
         if is_currency:
-            delta_str, color = format_delta(current, prior)
+            delta_str, color = format_delta(current, prior, unit=unit)
         elif "Days" in label:
             delta_str = f"{delta:+.1f}" if delta != 0 else "-"
             color = "red" if delta > 0 else "green" if delta < 0 else "none"
@@ -251,7 +275,7 @@ def add_ratios_table(doc: Document, ratios: FinancialRatios, fiscal_year: str, p
     doc.add_paragraph()
 
 
-def add_sp_outlook_section(doc: Document, company_info: CompanyInfo, ttm_revenue: float = None):
+def add_sp_outlook_section(doc: Document, company_info: CompanyInfo, ttm_revenue: float = None, unit: str = "dollars"):
     """Add the S&P/Moody's outlook section with editable placeholders."""
     doc.add_heading("Credit & Company Overview", level=2)
 
@@ -268,7 +292,7 @@ def add_sp_outlook_section(doc: Document, company_info: CompanyInfo, ttm_revenue
         ("HQ", f"{company_info.hq_city}, {company_info.hq_state}" if company_info.hq_city else EDIT_PLACEHOLDER),
         ("Public/Private?", "Public" if company_info.ticker else "Private"),
         ("Locations", EDIT_PLACEHOLDER),
-        ("TTM Revenue", format_currency(ttm_revenue) if ttm_revenue else EDIT_PLACEHOLDER),
+        ("TTM Revenue", format_currency(ttm_revenue, unit=unit) if ttm_revenue else EDIT_PLACEHOLDER),
     ]
 
     for row_idx, (label, value) in enumerate(rows_data):
@@ -331,7 +355,7 @@ def add_corporate_actions(doc: Document, actions: list[CorporateAction]):
     doc.add_paragraph()
 
 
-def add_ebitda_reconciliation(doc: Document, metrics: FinancialMetrics, fiscal_year: str, prior_year: str):
+def add_ebitda_reconciliation(doc: Document, metrics: FinancialMetrics, fiscal_year: str, prior_year: str, unit: str = "dollars"):
     """Add EBITDA reconciliation table."""
     doc.add_heading("EBITDA Reconciliation", level=2)
 
@@ -370,8 +394,8 @@ def add_ebitda_reconciliation(doc: Document, metrics: FinancialMetrics, fiscal_y
         row = table.rows[row_idx + 1]
         cells = row.cells
         cells[0].text = label
-        cells[1].text = format_currency(current)
-        cells[2].text = format_currency(prior)
+        cells[1].text = format_currency(current, unit=unit)
+        cells[2].text = format_currency(prior, unit=unit)
 
         # Bold the totals
         if label.startswith("="):
@@ -389,6 +413,7 @@ def generate_word_report(
     ratios: FinancialRatios,
     fiscal_year_end: str,
     fiscal_year_end_prior: str,
+    unit: str = "dollars",
     narrative: str = "",
     corporate_actions: list[CorporateAction] = None,
     logo_path: Path = None,
@@ -438,16 +463,16 @@ def generate_word_report(
 
     # S&P/Moody's section (with editable placeholders)
     if company_info:
-        add_sp_outlook_section(doc, company_info, ttm_revenue=metrics.top_line_revenue)
+        add_sp_outlook_section(doc, company_info, ttm_revenue=metrics.top_line_revenue, unit=unit)
 
     # Financial Statements Overview
-    add_financial_overview_table(doc, metrics, fiscal_year_end, fiscal_year_end_prior)
+    add_financial_overview_table(doc, metrics, fiscal_year_end, fiscal_year_end_prior, unit=unit)
 
     # Ratios
-    add_ratios_table(doc, ratios, fiscal_year_end, fiscal_year_end_prior)
+    add_ratios_table(doc, ratios, fiscal_year_end, fiscal_year_end_prior, unit=unit)
 
     # EBITDA Reconciliation
-    add_ebitda_reconciliation(doc, metrics, fiscal_year_end, fiscal_year_end_prior)
+    add_ebitda_reconciliation(doc, metrics, fiscal_year_end, fiscal_year_end_prior, unit=unit)
 
     # Save - support both Path and BytesIO
     import io
