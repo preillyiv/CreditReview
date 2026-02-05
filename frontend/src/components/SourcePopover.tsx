@@ -8,6 +8,13 @@ export function SourcePopover({ citation }: SourcePopoverProps) {
   // Check if this is a PDF citation (no filing_url)
   const isPdfSource = !citation.filing_url;
 
+  // Extract just the page number for display (e.g., "Page 98" from "Page 98 of PDF: ...")
+  const getPageDisplay = (statement: string): string => {
+    if (!statement) return 'PDF';
+    const match = statement.match(/Page (\d+)/);
+    return match ? `Page ${match[1]}` : statement;
+  };
+
   // TODO: Future enhancement - embed PDF viewer in review UI with page navigation
   // This would allow clicking citations to jump to the specific page in the PDF
 
@@ -15,7 +22,7 @@ export function SourcePopover({ citation }: SourcePopoverProps) {
     <span className="tooltip">
       {isPdfSource ? (
         <span style={{ fontSize: '0.8rem', color: '#666' }}>
-          {citation.statement || 'PDF'}
+          {getPageDisplay(citation.statement)}
         </span>
       ) : (
         <a
