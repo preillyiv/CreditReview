@@ -137,7 +137,7 @@ export function ReviewTable({
                     style={{ width: '100px', textAlign: 'right' }}
                   />
                 ) : (
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     <span
                       className={`editable-cell ${isEdited(ev.metric_key, false) ? 'edited-value' : ''}`}
                       onClick={() => startEditing(ev.metric_key, false, currentVal)}
