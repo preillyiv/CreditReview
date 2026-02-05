@@ -13,7 +13,6 @@ interface FinancialStatementsTableProps {
 interface LineItem {
   key: string;
   label: string;
-  indent: boolean;
   isBold: boolean;
 }
 
@@ -46,7 +45,7 @@ function StatementRow({
         style={{
           padding: '0.75rem',
           border: '1px solid #ddd',
-          paddingLeft: item.indent ? '2rem' : '0.75rem',
+          paddingLeft: !item.isBold ? '2rem' : '0.75rem',
           fontWeight: item.isBold ? '600' : 'normal',
           textAlign: 'left',
         }}
@@ -56,17 +55,17 @@ function StatementRow({
           {ev.llm_reasoning && <span className="tooltip-text">{ev.llm_reasoning}</span>}
         </span>
       </td>
-      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontWeight: item.isBold ? '600' : 'normal' }}>
+      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center', fontWeight: item.isBold ? '600' : 'normal' }}>
         {formatValue(currentVal)}
       </td>
-      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'right', fontWeight: item.isBold ? '600' : 'normal' }}>
+      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center', fontWeight: item.isBold ? '600' : 'normal' }}>
         {formatValue(priorVal)}
       </td>
       <td
         style={{
           padding: '0.75rem',
           border: '1px solid #ddd',
-          textAlign: 'right',
+          textAlign: 'center',
           backgroundColor: deltaColor,
           fontWeight: item.isBold ? '600' : 'normal',
         }}
@@ -166,33 +165,33 @@ export function FinancialStatementsTable({
   onResetValue,
 }: FinancialStatementsTableProps) {
   const incomeStatementItems: LineItem[] = [
-    { key: 'revenue', label: 'Top Line Revenue', indent: false, isBold: true },
-    { key: 'cost_of_revenue', label: 'Cost of Revenue', indent: true, isBold: false },
-    { key: 'gross_profit', label: 'Gross Profit', indent: false, isBold: true },
-    { key: 'depreciation_amortization', label: 'Depreciation & Amortization', indent: true, isBold: false },
-    { key: 'interest_expense', label: 'Interest Expense', indent: true, isBold: false },
-    { key: 'operating_income', label: 'Operating Income', indent: false, isBold: true },
-    { key: 'net_income', label: 'Net Income', indent: false, isBold: true },
-    { key: 'gross_margin', label: 'Gross Profit Margin %', indent: true, isBold: false },
-    { key: 'operating_margin', label: 'Operating Income Margin %', indent: true, isBold: false },
-    { key: 'net_margin', label: 'Net Income Margin %', indent: true, isBold: false },
+    { key: 'revenue', label: 'Top Line Revenue', isBold: true },
+    { key: 'cost_of_revenue', label: 'Cost of Revenue', isBold: false },
+    { key: 'gross_profit', label: 'Gross Profit', isBold: true },
+    { key: 'depreciation_amortization', label: 'Depreciation & Amortization', isBold: false },
+    { key: 'interest_expense', label: 'Interest Expense', isBold: false },
+    { key: 'operating_income', label: 'Operating Income', isBold: true },
+    { key: 'net_income', label: 'Net Income', isBold: true },
+    { key: 'gross_margin', label: 'Gross Profit Margin %', isBold: false },
+    { key: 'operating_margin', label: 'Operating Income Margin %', isBold: false },
+    { key: 'net_margin', label: 'Net Income Margin %', isBold: false },
   ];
 
   const balanceSheetItems: LineItem[] = [
-    { key: 'current_assets', label: 'Current Assets', indent: false, isBold: true },
-    { key: 'accounts_receivable', label: 'Accounts Receivable', indent: true, isBold: false },
-    { key: 'intangible_assets', label: 'Intangible Assets', indent: false, isBold: false },
-    { key: 'goodwill', label: 'Goodwill', indent: false, isBold: false },
-    { key: 'total_assets', label: 'Total Assets', indent: false, isBold: true },
-    { key: 'current_liabilities', label: 'Current Liabilities', indent: false, isBold: true },
-    { key: 'total_debt', label: 'Total Debt', indent: true, isBold: false },
-    { key: 'total_liabilities', label: 'Total Liabilities', indent: false, isBold: true },
-    { key: 'stockholders_equity', label: "Stockholders' Equity", indent: false, isBold: true },
+    { key: 'current_assets', label: 'Current Assets', isBold: true },
+    { key: 'accounts_receivable', label: 'Accounts Receivable', isBold: false },
+    { key: 'intangible_assets', label: 'Intangible Assets', isBold: false },
+    { key: 'goodwill', label: 'Goodwill', isBold: false },
+    { key: 'total_assets', label: 'Total Assets', isBold: true },
+    { key: 'current_liabilities', label: 'Current Liabilities', isBold: true },
+    { key: 'total_debt', label: 'Total Debt', isBold: false },
+    { key: 'total_liabilities', label: 'Total Liabilities', isBold: true },
+    { key: 'stockholders_equity', label: "Stockholders' Equity", isBold: true },
   ];
 
   const liquidityItems: LineItem[] = [
-    { key: 'cash', label: 'Cash & Cash Equivalents', indent: false, isBold: true },
-    { key: 'tangible_net_worth', label: 'Tangible Net Worth', indent: false, isBold: true },
+    { key: 'cash', label: 'Cash & Cash Equivalents', isBold: true },
+    { key: 'tangible_net_worth', label: 'Tangible Net Worth', isBold: true },
   ];
 
   return (
