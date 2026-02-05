@@ -70,6 +70,9 @@ def build_extraction_session(data: NormalizedExtractionData) -> ExtractionSessio
 
     # Convert normalized metrics to ExtractedValue with citations
     for metric_key, norm_metric in data.metrics.items():
+        # For PDF sources, put page info in statement field
+        statement_field = norm_metric.source_description if not norm_metric.source_url else ""
+
         citation = SourceCitation(
             xbrl_concept=norm_metric.source_description,
             xbrl_label=norm_metric.source_description,
@@ -79,7 +82,7 @@ def build_extraction_session(data: NormalizedExtractionData) -> ExtractionSessio
             form_type=norm_metric.form_type,
             period_end=norm_metric.period_end,
             raw_value=norm_metric.value,
-            statement="",
+            statement=statement_field,
         )
 
         citation_prior = SourceCitation(
@@ -91,7 +94,7 @@ def build_extraction_session(data: NormalizedExtractionData) -> ExtractionSessio
             form_type=norm_metric.form_type,
             period_end=norm_metric.period_end_prior,
             raw_value=norm_metric.value_prior,
-            statement="",
+            statement=statement_field,
         )
 
         session.raw_values[metric_key] = ExtractedValue(

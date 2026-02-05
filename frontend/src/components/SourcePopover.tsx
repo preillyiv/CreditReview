@@ -15,7 +15,7 @@ export function SourcePopover({ citation }: SourcePopoverProps) {
     <span className="tooltip">
       {isPdfSource ? (
         <span style={{ fontSize: '0.8rem', color: '#666' }}>
-          {citation.statement || 'From PDF'}
+          {citation.statement || 'PDF'}
         </span>
       ) : (
         <a

@@ -17,6 +17,7 @@ export function DataInput({ onSubmit }: DataInputProps) {
   const [ticker, setTicker] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState<LLMModel>('claude-opus-4-5-20251101');
+  const [dragOver, setDragOver] = useState(false);
 
   const handleTickerSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -35,6 +36,28 @@ export function DataInput({ onSubmit }: DataInputProps) {
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     setFile(files ? files[0] : null);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      setFile(files[0]);
+    }
   };
 
   return (
@@ -104,17 +127,47 @@ export function DataInput({ onSubmit }: DataInputProps) {
         <p className="text-sm text-muted mb-2">
           Upload a 10-K filing PDF to extract financial data, company information, and credit ratings directly from the document.
         </p>
-        <form onSubmit={handlePdfSubmit} className="flex gap-2">
+
+        {/* Drag-and-drop area */}
+        <div
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{
+            border: `2px dashed ${dragOver ? '#4a90e2' : '#ccc'}`,
+            borderRadius: '8px',
+            padding: '2rem',
+            textAlign: 'center',
+            backgroundColor: dragOver ? 'rgba(74, 144, 226, 0.05)' : '#f9f9f9',
+            transition: 'all 0.2s ease',
+            cursor: 'pointer',
+            marginBottom: '1rem',
+          }}
+        >
           <input
             type="file"
             accept=".pdf"
             onChange={handleFileChange}
-            style={{ maxWidth: '300px' }}
+            id="pdf-file-input"
+            style={{ display: 'none' }}
           />
-          <button type="submit" className="primary" disabled={!file}>
-            Extract Data
+          <label htmlFor="pdf-file-input" style={{ cursor: 'pointer', display: 'block' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📄</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 500, marginBottom: '0.25rem' }}>
+              {file ? file.name : 'Drop PDF here or click to browse'}
+            </div>
+            <p className="text-sm text-muted" style={{ margin: '0.25rem 0' }}>
+              or drag and drop a 10-K PDF file
+            </p>
+          </label>
+        </div>
+
+        <form onSubmit={handlePdfSubmit}>
+          <button type="submit" className="primary" disabled={!file} style={{ width: '100%' }}>
+            Extract Data from PDF
           </button>
         </form>
+
         <p className="text-sm text-muted" style={{ marginTop: '1rem' }}>
           The PDF must contain searchable text (not scanned images). Supports 10-K annual reports.
         </p>
