@@ -31,6 +31,7 @@ class NormalizedMetric:
     form_type: str               # "10-K"
     period_end: str              # "2024-12-31"
     period_end_prior: str        # "2023-12-31"
+    unit: str = "dollars"        # Unit of the value (e.g., "millions", "thousands", "dollars")
 
 
 @dataclass
@@ -44,6 +45,7 @@ class NormalizedExtractionData:
     metrics: Dict[str, NormalizedMetric]  # Keyed by metric_key
     unmapped_notes: List[str] = field(default_factory=list)  # Notable items not mapped
     not_found: List[str] = field(default_factory=list)  # Required metrics not found
+    unit: str = "dollars"        # Unit of all financial metrics (e.g., "millions", "thousands", "dollars")
     llm_model: str = ""
     llm_notes: List[str] = field(default_factory=list)
     llm_warnings: List[str] = field(default_factory=list)
@@ -63,6 +65,7 @@ def build_extraction_session(data: NormalizedExtractionData) -> ExtractionSessio
         cik=data.cik,
         fiscal_year_end=data.fiscal_year_end,
         fiscal_year_end_prior=data.fiscal_year_end_prior,
+        unit=data.unit,  # Store the unit from normalized data
         llm_model=data.llm_model,
         llm_notes=data.llm_notes,
         llm_warnings=data.llm_warnings,

@@ -27,6 +27,7 @@ class PDFExtractionResult:
     ticker: str
     fiscal_year_end: str
     fiscal_year_end_prior: str
+    unit: str  # Unit of financial metrics (e.g., "millions", "thousands", "dollars")
     metrics: dict  # metric_key -> {value, value_prior, page_number, source_text}
     company_info: dict  # sector, industry, employees, website, hq, etc.
     credit_ratings: dict  # sp_rating, sp_outlook, moodys_rating, moodys_outlook
@@ -111,7 +112,7 @@ CREDIT RATINGS (if mentioned anywhere in the document):
 - Moody's rating and outlook
 
 EXTRACTION RULES:
-- All dollar amounts should be converted to their base unit (millions if stated in millions, etc.)
+- IMPORTANT: Report the unit/scale of each metric (e.g., "millions", "thousands", "dollars")
 - For each metric, provide BOTH current year and prior year values
 - Include the page number where each value was found
 - If a metric appears in multiple places, use the most recent/authoritative source
@@ -123,10 +124,11 @@ Return ONLY valid JSON (no markdown, no extra text):
   "ticker": "string (or empty if not found)",
   "fiscal_year_end": "YYYY-MM-DD",
   "fiscal_year_end_prior": "YYYY-MM-DD",
+  "unit": "string (e.g., 'millions', 'thousands', 'dollars' - for all financial metrics)",
   "metrics": {{
     "metric_key": {{
-      "value": number (current year),
-      "value_prior": number (prior year),
+      "value": number (in the unit specified above),
+      "value_prior": number (in the unit specified above),
       "page_number": number (0-indexed page where found),
       "source_text": "brief quote or location description"
     }},
@@ -196,6 +198,7 @@ PDF CONTENT:
             ticker=result_json.get("ticker") or "",
             fiscal_year_end=result_json.get("fiscal_year_end") or "",
             fiscal_year_end_prior=result_json.get("fiscal_year_end_prior") or "",
+            unit=result_json.get("unit") or "dollars",  # Default to dollars if not specified
             metrics=result_json.get("metrics") or {},
             company_info=result_json.get("company_info") or {},
             credit_ratings=result_json.get("credit_ratings") or {},
@@ -246,6 +249,7 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
                 form_type="10-K",
                 period_end=pdf_result.fiscal_year_end,
                 period_end_prior=pdf_result.fiscal_year_end_prior,
+                unit=pdf_result.unit,  # Pass through the unit from PDF
             )
         except (ValueError, TypeError):
             # Skip metrics with invalid values
@@ -260,6 +264,7 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
         metrics=metrics,
         unmapped_notes=pdf_result.unmapped_notes,
         not_found=pdf_result.not_found,
+        unit=pdf_result.unit,  # Store the unit extracted from PDF
         llm_model="claude-opus-4-5-20251101",  # Will be set by caller
         llm_notes=pdf_result.llm_notes,
         llm_warnings=pdf_result.llm_warnings,

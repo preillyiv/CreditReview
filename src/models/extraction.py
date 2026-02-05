@@ -163,6 +163,7 @@ class ExtractionSession:
     cik: str                 # SEC CIK number
     fiscal_year_end: str     # e.g., "2024-12-31"
     fiscal_year_end_prior: str  # e.g., "2023-12-31"
+    unit: str = "dollars"    # Unit of financial metrics (e.g., "millions", "thousands", "dollars")
 
     # Raw extracted values (before calculations)
     raw_values: dict[str, ExtractedValue] = field(default_factory=dict)

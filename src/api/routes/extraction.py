@@ -102,6 +102,7 @@ class ExtractResponse(BaseModel):
     cik: str
     fiscal_year_end: str
     fiscal_year_end_prior: str
+    unit: str  # Unit of financial metrics (e.g., "millions", "thousands", "dollars")
     raw_values: dict[str, ExtractedValueResponse]
     unmapped_values: list[UnmappedValueResponse]
     not_found: list[NotFoundMetricResponse]
@@ -278,6 +279,7 @@ def _session_to_extract_response(session: ExtractionSession) -> ExtractResponse:
         cik=session.cik,
         fiscal_year_end=session.fiscal_year_end,
         fiscal_year_end_prior=session.fiscal_year_end_prior,
+        unit=session.unit,
         raw_values=raw_values,
         unmapped_values=unmapped,
         not_found=not_found,
