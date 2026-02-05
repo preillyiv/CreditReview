@@ -11,6 +11,7 @@ import {
 } from './api/client';
 import { DataInput, InputMode, LLMModel } from './components/TickerInput';
 import { ReviewTable } from './components/ReviewTable';
+import { FinancialStatementsTable } from './components/FinancialStatementsTable';
 import { UnmappedSection } from './components/UnmappedSection';
 import { ExportButtons } from './components/ExportButtons';
 import { CalculatedResults } from './components/CalculatedResults';
@@ -216,15 +217,13 @@ function App() {
             <p className="text-sm text-muted mb-2">
               Click any value to edit. {inputMode === 'ticker' ? 'Click the source link to view the SEC filing.' : 'Source information is shown for each value.'}
             </p>
-            <ReviewTable
+            <FinancialStatementsTable
               rawValues={extractResult.raw_values}
               fiscalYearEnd={extractResult.fiscal_year_end}
               fiscalYearEndPrior={extractResult.fiscal_year_end_prior}
               editedValues={editedValues}
               onValueChange={handleValueChange}
               onResetValue={handleResetValue}
-              isSECData={inputMode === 'ticker'}
-              unit={extractResult.unit}
             />
           </div>
 
