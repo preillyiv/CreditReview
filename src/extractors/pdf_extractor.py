@@ -166,24 +166,48 @@ PDF CONTENT:
         )
 
         result_text = response.content[0].text
+
+        # Handle markdown-wrapped JSON (```json ... ```)
+        if result_text.strip().startswith('```'):
+            # Extract JSON from markdown code block
+            lines = result_text.strip().split('\n')
+            json_lines = []
+            in_json = False
+            for line in lines:
+                if line.strip().startswith('```json'):
+                    in_json = True
+                    continue
+                elif line.strip() == '```':
+                    in_json = False
+                    break
+                elif in_json:
+                    json_lines.append(line)
+            result_text = '\n'.join(json_lines)
+
         result_json = json.loads(result_text)
 
-        # Parse result into PDFExtractionResult
+        # Validate we got expected structure
+        if not isinstance(result_json, dict):
+            raise ValueError(f"Expected JSON object, got {type(result_json).__name__}")
+
+        # Parse result into PDFExtractionResult with defaults
         return PDFExtractionResult(
-            company_name=result_json.get("company_name", "Unknown"),
-            ticker=result_json.get("ticker", ""),
-            fiscal_year_end=result_json.get("fiscal_year_end", ""),
-            fiscal_year_end_prior=result_json.get("fiscal_year_end_prior", ""),
-            metrics=result_json.get("metrics", {}),
-            company_info=result_json.get("company_info", {}),
-            credit_ratings=result_json.get("credit_ratings", {}),
-            unmapped_notes=result_json.get("unmapped_notes", []),
-            not_found=result_json.get("not_found", []),
-            llm_notes=result_json.get("llm_notes", []),
-            llm_warnings=result_json.get("llm_warnings", []),
+            company_name=result_json.get("company_name") or "Unknown",
+            ticker=result_json.get("ticker") or "",
+            fiscal_year_end=result_json.get("fiscal_year_end") or "",
+            fiscal_year_end_prior=result_json.get("fiscal_year_end_prior") or "",
+            metrics=result_json.get("metrics") or {},
+            company_info=result_json.get("company_info") or {},
+            credit_ratings=result_json.get("credit_ratings") or {},
+            unmapped_notes=result_json.get("unmapped_notes") or [],
+            not_found=result_json.get("not_found") or [],
+            llm_notes=result_json.get("llm_notes") or [],
+            llm_warnings=result_json.get("llm_warnings") or [],
         )
     except json.JSONDecodeError as e:
-        raise ValueError(f"LLM response was not valid JSON: {str(e)}")
+        # Show first 200 chars of response for debugging
+        preview = result_text[:200] if 'result_text' in locals() else "No response"
+        raise ValueError(f"LLM response was not valid JSON: {str(e)}. Response preview: {preview}")
     except Exception as e:
         raise ValueError(f"LLM extraction failed: {str(e)}")
 
