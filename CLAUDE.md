@@ -118,7 +118,8 @@ src/
 │   └── value_extractor.py  # Raw value extraction helpers
 ├── calculators/            # Metrics and ratios calculations
 │   ├── metrics.py          # Financial metrics (EBITDA, margins, etc.)
-│   └── ratios.py           # Financial ratios (current ratio, etc.)
+│   ├── ratios.py           # Financial ratios (current ratio, etc.)
+│   └── verification.py     # Auto-verification checks (subtotals, accounting equation)
 ├── fetchers/               # External data fetching
 │   ├── sec_edgar.py        # SEC EDGAR XBRL data
 │   ├── yahoo.py            # Yahoo Finance (company info, actions)
@@ -136,28 +137,24 @@ frontend/                   # React + Vite app
 output/                     # Generated reports (dev only)
 ```
 
-## Key Metrics (from images)
-### Financial Statements Overview
-- Tangible Net Worth
-- Cash Balance
-- Top Line Revenue
-- Gross Profit / Margin
-- Operating Income / Margin
-- EBITDA / Margin
-- Adjusted EBITDA / Margin
-- Net Income / Margin
+## Financial Statements (~50 extracted line items)
+The system extracts full financial statements across three categories:
 
-### Ratios
-- Current Ratio
-- Cash Ratio
-- Debt-to-Equity Ratio
-- EBITDA Interest Coverage
-- Net Debt / EBITDA
-- Net Debt / Adj. EBITDA
-- Days Sales Outstanding
-- Working Capital
-- Return on Assets
-- Return on Equity
+### Income Statement (15 items)
+Revenue, COGS, Gross Profit, SG&A, R&D, D&A, Other OpEx, Total OpEx, Operating Income, Interest Expense, Other Income/Expense, Pre-tax Income, Tax Expense, Net Income, Stock Compensation
+
+### Balance Sheet (20 items)
+Cash, ST Investments, A/R, Inventories, Other CA, Total CA, PP&E, Goodwill, Intangibles, Other NCA, Total Assets, A/P, ST Debt, Accrued Liabilities, Other CL, Total CL, LT Debt, Other NCL, Total Liabilities, Stockholders' Equity
+
+### Cash Flow Statement (16 items)
+Net Income, D&A, SBC, Working Capital Changes, Other Operating, Cash from Ops, CapEx, Acquisitions, Other Investing, Cash from Investing, Debt Issuance/Repayment, Stock Repurchases, Dividends, Other Financing, Cash from Financing, Net Change in Cash
+
+### Calculated Metrics & Ratios
+- **Summary Metrics:** TNW, EBITDA, Adj EBITDA, margins (gross/operating/EBITDA/net)
+- **Ratios:** Current, Cash, D/E, EBITDA Coverage, Net Debt/EBITDA, DSO, Working Capital, ROA, ROE
+
+### Auto-Verification Checks
+7 checks run automatically (both years): Gross Profit, Operating Income, Net Income, Current Assets, Accounting Equation, Current Liabilities, Cash Flow totals
 
 ## Table Formatting
 - Green background: positive delta
@@ -169,8 +166,10 @@ output/                     # Generated reports (dev only)
 ```
 # Extraction
 POST /api/extract           - Start extraction for a ticker
-GET  /api/extract/{id}      - Get extraction session status
+POST /api/extract-pdf       - Start extraction from uploaded 10-K PDF
+GET  /api/session/{id}      - Get extraction session status
 POST /api/approve           - Approve reviewed raw values
+POST /api/verify            - Re-run verification checks with edited values
 
 # Export
 POST /api/export/excel      - Export to Excel with formulas

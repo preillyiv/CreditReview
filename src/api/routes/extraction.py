@@ -22,6 +22,7 @@ from src.extractors.session_builder import (
 from src.extractors.pdf_extractor import normalize_unit
 from src.calculators.metrics import calculate_metrics_from_raw, FinancialMetrics
 from src.calculators.ratios import calculate_ratios_from_raw, FinancialRatios
+from src.calculators.verification import run_verification, VerificationResult
 from src.models.extraction import ExtractionSession, CalculationStep
 
 router = APIRouter()
@@ -36,7 +37,7 @@ _raw_data_cache: dict[str, dict] = {}  # Cache raw SEC data by session_id
 class ExtractRequest(BaseModel):
     """Request to extract financial data for a ticker."""
     ticker: str
-    model: str | None = None  # LLM model to use (e.g., "claude-opus-4-5-20250514")
+    model: str | None = None  # LLM model to use (e.g., "claude-opus-4-6")
 
 
 class EditedValue(BaseModel):
@@ -95,6 +96,31 @@ class NotFoundMetricResponse(BaseModel):
     llm_note: str
 
 
+class VerificationCheckResponse(BaseModel):
+    """A single verification check result."""
+    check_id: str
+    description: str
+    formula: str
+    lhs_value: float
+    rhs_value: float
+    difference: float
+    tolerance: float
+    passed: bool
+    severity: str
+    year: str
+    skipped: bool = False
+
+
+class VerificationResultResponse(BaseModel):
+    """Verification results summary."""
+    checks: list[VerificationCheckResponse]
+    pass_count: int
+    fail_count: int
+    warning_count: int
+    error_count: int
+    skip_count: int
+
+
 class ExtractResponse(BaseModel):
     """Response from extraction endpoint."""
     session_id: str
@@ -109,6 +135,7 @@ class ExtractResponse(BaseModel):
     not_found: list[NotFoundMetricResponse]
     llm_notes: list[str]
     llm_warnings: list[str]
+    verification: VerificationResultResponse | None = None
 
 
 class CalculatedMetricsResponse(BaseModel):
@@ -222,7 +249,34 @@ def _normalize_session_to_dollars(session: ExtractionSession) -> None:
     session.unit = "dollars"
 
 
-def _session_to_extract_response(session: ExtractionSession) -> ExtractResponse:
+def _verification_to_response(vr: VerificationResult) -> VerificationResultResponse:
+    """Convert VerificationResult to API response."""
+    return VerificationResultResponse(
+        checks=[
+            VerificationCheckResponse(
+                check_id=c.check_id,
+                description=c.description,
+                formula=c.formula,
+                lhs_value=c.lhs_value,
+                rhs_value=c.rhs_value,
+                difference=c.difference,
+                tolerance=c.tolerance,
+                passed=c.passed,
+                severity=c.severity,
+                year=c.year,
+                skipped=c.skipped,
+            )
+            for c in vr.checks
+        ],
+        pass_count=vr.pass_count,
+        fail_count=vr.fail_count,
+        warning_count=vr.warning_count,
+        error_count=vr.error_count,
+        skip_count=vr.skip_count,
+    )
+
+
+def _session_to_extract_response(session: ExtractionSession, verification: VerificationResult | None = None) -> ExtractResponse:
     """Convert ExtractionSession to API response."""
     raw_values = {}
     for key, ev in session.raw_values.items():
@@ -323,6 +377,7 @@ def _session_to_extract_response(session: ExtractionSession) -> ExtractResponse:
         not_found=not_found,
         llm_notes=session.llm_notes,
         llm_warnings=session.llm_warnings,
+        verification=_verification_to_response(verification) if verification else None,
     )
 
 
@@ -497,7 +552,7 @@ async def extract(request: ExtractRequest) -> ExtractResponse:
     raw_data = fetch_company_facts(company.cik)
 
     # Step 3: Map concepts using LLM
-    llm_model = request.model or "claude-opus-4-5-20251101"
+    llm_model = request.model or "claude-opus-4-6"
     mapping_result = map_concepts_with_raw_data(
         company_name=company.name,
         ticker=ticker,
@@ -538,17 +593,20 @@ async def extract(request: ExtractRequest) -> ExtractResponse:
     # Step 7: Normalize all values to actual dollars immediately (no intermediate unit)
     _normalize_session_to_dollars(session)
 
+    # Run verification checks
+    verification = run_verification(session)
+
     # Store session and raw data for later
     _sessions[session.session_id] = session
     _raw_data_cache[session.session_id] = raw_data
 
-    return _session_to_extract_response(session)
+    return _session_to_extract_response(session, verification=verification)
 
 
 @router.post("/extract-pdf", response_model=ExtractResponse)
 async def extract_pdf(
     file: UploadFile = File(...),
-    model: str = Form("claude-opus-4-5-20251101")
+    model: str = Form("claude-opus-4-6")
 ) -> ExtractResponse:
     """
     Extract financial data from uploaded 10-K PDF.
@@ -622,10 +680,13 @@ async def extract_pdf(
         print(f"  Sample raw value ({first_key}): {first_val.value}")
     print()
 
+    # Run verification checks
+    verification = run_verification(session)
+
     # Store session
     _sessions[session.session_id] = session
 
-    return _session_to_extract_response(session)
+    return _session_to_extract_response(session, verification=verification)
 
 
 @router.post("/approve", response_model=ApproveResponse)
@@ -699,6 +760,38 @@ async def approve(request: ApproveRequest) -> ApproveResponse:
     )
 
 
+class VerifyRequest(BaseModel):
+    """Request to re-run verification checks."""
+    session_id: str
+    edited_values: list[EditedValue] = []
+
+
+@router.post("/verify", response_model=VerificationResultResponse)
+async def verify(request: VerifyRequest) -> VerificationResultResponse:
+    """
+    Re-run verification checks with optionally edited values.
+
+    This allows users to check if their edits fix verification issues
+    without approving the session.
+    """
+    session_id = request.session_id
+
+    if session_id not in _sessions:
+        raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+
+    session = _sessions[session_id]
+
+    # Apply edits temporarily for verification
+    for edit in request.edited_values:
+        if edit.value is not None:
+            session.set_raw_value(edit.metric_key, edit.value, prior=False)
+        if edit.value_prior is not None:
+            session.set_raw_value(edit.metric_key, edit.value_prior, prior=True)
+
+    verification = run_verification(session)
+    return _verification_to_response(verification)
+
+
 @router.get("/session/{session_id}")
 async def get_session(session_id: str) -> ExtractResponse:
     """Get the current state of an extraction session."""
@@ -706,4 +799,5 @@ async def get_session(session_id: str) -> ExtractResponse:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
 
     session = _sessions[session_id]
-    return _session_to_extract_response(session)
+    verification = run_verification(session)
+    return _session_to_extract_response(session, verification=verification)

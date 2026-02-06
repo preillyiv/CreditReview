@@ -256,25 +256,65 @@ class ExtractionSession:
 
 # Display name mapping for metrics
 METRIC_DISPLAY_NAMES = {
-    # Base values (extracted from XBRL)
+    # === Income Statement ===
     "revenue": "Top Line Revenue",
     "cost_of_revenue": "Cost of Revenue",
     "gross_profit": "Gross Profit",
-    "operating_income": "Operating Income",
+    "sga_expense": "Selling, General & Administrative",
+    "rd_expense": "Research & Development",
     "depreciation_amortization": "Depreciation & Amortization",
+    "other_operating_expense": "Other Operating Expenses",
+    "total_operating_expenses": "Total Operating Expenses",
+    "operating_income": "Operating Income",
     "interest_expense": "Interest Expense",
+    "other_income_expense": "Other Income/Expense, Net",
+    "income_before_tax": "Income Before Income Tax",
+    "income_tax_expense": "Income Tax Expense",
     "net_income": "Net Income",
+    "stock_compensation": "Stock-Based Compensation",
+
+    # === Balance Sheet - Assets ===
+    "cash": "Cash & Cash Equivalents",
+    "short_term_investments": "Short-term Investments",
+    "accounts_receivable": "Accounts Receivable",
+    "inventories": "Inventories",
+    "other_current_assets": "Other Current Assets",
+    "current_assets": "Total Current Assets",
+    "ppe_net": "Property, Plant & Equipment, Net",
+    "goodwill": "Goodwill",
+    "intangible_assets": "Intangible Assets",
+    "other_noncurrent_assets": "Other Non-Current Assets",
     "total_assets": "Total Assets",
+
+    # === Balance Sheet - Liabilities & Equity ===
+    "accounts_payable": "Accounts Payable",
+    "short_term_debt": "Short-term Debt",
+    "accrued_liabilities": "Accrued Liabilities",
+    "other_current_liabilities": "Other Current Liabilities",
+    "current_liabilities": "Total Current Liabilities",
+    "long_term_debt": "Long-term Debt",
+    "other_noncurrent_liabilities": "Other Non-Current Liabilities",
     "total_liabilities": "Total Liabilities",
     "stockholders_equity": "Stockholders' Equity",
-    "current_assets": "Current Assets",
-    "current_liabilities": "Current Liabilities",
-    "cash": "Cash & Cash Equivalents",
     "total_debt": "Total Debt",
-    "accounts_receivable": "Accounts Receivable",
-    "intangible_assets": "Intangible Assets",
-    "goodwill": "Goodwill",
-    "stock_compensation": "Stock-Based Compensation",
+
+    # === Cash Flow Statement ===
+    "cf_net_income": "Net Income",
+    "cf_depreciation_amortization": "Depreciation & Amortization",
+    "cf_stock_compensation": "Stock-Based Compensation",
+    "cf_working_capital_changes": "Changes in Working Capital",
+    "cf_other_operating": "Other Operating Activities",
+    "cash_from_operations": "Cash from Operations",
+    "capital_expenditures": "Capital Expenditures",
+    "acquisitions": "Acquisitions",
+    "cf_other_investing": "Other Investing Activities",
+    "cash_from_investing": "Cash from Investing",
+    "debt_issuance_repayment": "Debt Issuance/Repayment, Net",
+    "stock_repurchases": "Stock Repurchases",
+    "dividends_paid": "Dividends Paid",
+    "cf_other_financing": "Other Financing Activities",
+    "cash_from_financing": "Cash from Financing",
+    "net_change_in_cash": "Net Change in Cash",
 
     # Calculated metrics
     "tangible_net_worth": "Tangible Net Worth",
@@ -303,22 +343,145 @@ METRIC_DISPLAY_NAMES = {
 
 # Required base metrics that LLM should map from XBRL
 REQUIRED_BASE_METRICS = [
+    # Income Statement
     "revenue",
     "cost_of_revenue",
     "gross_profit",
-    "operating_income",
+    "sga_expense",
+    "rd_expense",
     "depreciation_amortization",
+    "other_operating_expense",
+    "total_operating_expenses",
+    "operating_income",
     "interest_expense",
+    "other_income_expense",
+    "income_before_tax",
+    "income_tax_expense",
     "net_income",
+    "stock_compensation",
+    # Balance Sheet - Assets
+    "cash",
+    "short_term_investments",
+    "accounts_receivable",
+    "inventories",
+    "other_current_assets",
+    "current_assets",
+    "ppe_net",
+    "goodwill",
+    "intangible_assets",
+    "other_noncurrent_assets",
     "total_assets",
+    # Balance Sheet - Liabilities & Equity
+    "accounts_payable",
+    "short_term_debt",
+    "accrued_liabilities",
+    "other_current_liabilities",
+    "current_liabilities",
+    "long_term_debt",
+    "other_noncurrent_liabilities",
     "total_liabilities",
     "stockholders_equity",
-    "current_assets",
-    "current_liabilities",
-    "cash",
     "total_debt",
-    "accounts_receivable",
-    "intangible_assets",
-    "goodwill",
-    "stock_compensation",
+    # Cash Flow Statement
+    "cf_net_income",
+    "cf_depreciation_amortization",
+    "cf_stock_compensation",
+    "cf_working_capital_changes",
+    "cf_other_operating",
+    "cash_from_operations",
+    "capital_expenditures",
+    "acquisitions",
+    "cf_other_investing",
+    "cash_from_investing",
+    "debt_issuance_repayment",
+    "stock_repurchases",
+    "dividends_paid",
+    "cf_other_financing",
+    "cash_from_financing",
+    "net_change_in_cash",
+]
+
+
+@dataclass
+class StatementLineItem:
+    """Metadata for rendering a single line item in a financial statement."""
+    metric_key: str
+    display_name: str
+    statement: str        # "income_statement", "balance_sheet", "cash_flow"
+    section: str          # e.g., "Current Assets", "Operating Activities", ""
+    indent_level: int     # 0 = bold top-level, 1 = indented sub-item
+    is_subtotal: bool
+    is_bold: bool
+    sort_order: int
+
+
+# === Financial Statement Line Item Registries ===
+
+INCOME_STATEMENT_ITEMS = [
+    StatementLineItem("revenue", "Top Line Revenue", "income_statement", "", 0, False, True, 0),
+    StatementLineItem("cost_of_revenue", "Cost of Revenue", "income_statement", "", 1, False, False, 1),
+    StatementLineItem("gross_profit", "Gross Profit", "income_statement", "", 0, True, True, 2),
+    StatementLineItem("sga_expense", "Selling, General & Administrative", "income_statement", "", 1, False, False, 3),
+    StatementLineItem("rd_expense", "Research & Development", "income_statement", "", 1, False, False, 4),
+    StatementLineItem("depreciation_amortization", "Depreciation & Amortization", "income_statement", "", 1, False, False, 5),
+    StatementLineItem("other_operating_expense", "Other Operating Expenses", "income_statement", "", 1, False, False, 6),
+    StatementLineItem("total_operating_expenses", "Total Operating Expenses", "income_statement", "", 0, True, True, 7),
+    StatementLineItem("operating_income", "Operating Income", "income_statement", "", 0, True, True, 8),
+    StatementLineItem("interest_expense", "Interest Expense", "income_statement", "", 1, False, False, 9),
+    StatementLineItem("other_income_expense", "Other Income/Expense, Net", "income_statement", "", 1, False, False, 10),
+    StatementLineItem("income_before_tax", "Income Before Income Tax", "income_statement", "", 0, True, True, 11),
+    StatementLineItem("income_tax_expense", "Income Tax Expense", "income_statement", "", 1, False, False, 12),
+    StatementLineItem("net_income", "Net Income", "income_statement", "", 0, True, True, 13),
+    StatementLineItem("stock_compensation", "Stock-Based Compensation", "income_statement", "", 1, False, False, 14),
+]
+
+BALANCE_SHEET_ITEMS = [
+    # Current Assets
+    StatementLineItem("cash", "Cash & Cash Equivalents", "balance_sheet", "Current Assets", 1, False, False, 0),
+    StatementLineItem("short_term_investments", "Short-term Investments", "balance_sheet", "Current Assets", 1, False, False, 1),
+    StatementLineItem("accounts_receivable", "Accounts Receivable", "balance_sheet", "Current Assets", 1, False, False, 2),
+    StatementLineItem("inventories", "Inventories", "balance_sheet", "Current Assets", 1, False, False, 3),
+    StatementLineItem("other_current_assets", "Other Current Assets", "balance_sheet", "Current Assets", 1, False, False, 4),
+    StatementLineItem("current_assets", "Total Current Assets", "balance_sheet", "Current Assets", 0, True, True, 5),
+    # Non-Current Assets
+    StatementLineItem("ppe_net", "Property, Plant & Equipment, Net", "balance_sheet", "Non-Current Assets", 1, False, False, 6),
+    StatementLineItem("goodwill", "Goodwill", "balance_sheet", "Non-Current Assets", 1, False, False, 7),
+    StatementLineItem("intangible_assets", "Intangible Assets", "balance_sheet", "Non-Current Assets", 1, False, False, 8),
+    StatementLineItem("other_noncurrent_assets", "Other Non-Current Assets", "balance_sheet", "Non-Current Assets", 1, False, False, 9),
+    StatementLineItem("total_assets", "Total Assets", "balance_sheet", "", 0, True, True, 10),
+    # Current Liabilities
+    StatementLineItem("accounts_payable", "Accounts Payable", "balance_sheet", "Current Liabilities", 1, False, False, 11),
+    StatementLineItem("short_term_debt", "Short-term Debt", "balance_sheet", "Current Liabilities", 1, False, False, 12),
+    StatementLineItem("accrued_liabilities", "Accrued Liabilities", "balance_sheet", "Current Liabilities", 1, False, False, 13),
+    StatementLineItem("other_current_liabilities", "Other Current Liabilities", "balance_sheet", "Current Liabilities", 1, False, False, 14),
+    StatementLineItem("current_liabilities", "Total Current Liabilities", "balance_sheet", "Current Liabilities", 0, True, True, 15),
+    # Non-Current Liabilities
+    StatementLineItem("long_term_debt", "Long-term Debt", "balance_sheet", "Non-Current Liabilities", 1, False, False, 16),
+    StatementLineItem("other_noncurrent_liabilities", "Other Non-Current Liabilities", "balance_sheet", "Non-Current Liabilities", 1, False, False, 17),
+    StatementLineItem("total_liabilities", "Total Liabilities", "balance_sheet", "", 0, True, True, 18),
+    # Equity
+    StatementLineItem("stockholders_equity", "Stockholders' Equity", "balance_sheet", "Equity", 0, True, True, 19),
+]
+
+CASH_FLOW_ITEMS = [
+    # Operating Activities
+    StatementLineItem("cf_net_income", "Net Income", "cash_flow", "Operating Activities", 1, False, False, 0),
+    StatementLineItem("cf_depreciation_amortization", "Depreciation & Amortization", "cash_flow", "Operating Activities", 1, False, False, 1),
+    StatementLineItem("cf_stock_compensation", "Stock-Based Compensation", "cash_flow", "Operating Activities", 1, False, False, 2),
+    StatementLineItem("cf_working_capital_changes", "Changes in Working Capital", "cash_flow", "Operating Activities", 1, False, False, 3),
+    StatementLineItem("cf_other_operating", "Other Operating Activities", "cash_flow", "Operating Activities", 1, False, False, 4),
+    StatementLineItem("cash_from_operations", "Cash from Operations", "cash_flow", "Operating Activities", 0, True, True, 5),
+    # Investing Activities
+    StatementLineItem("capital_expenditures", "Capital Expenditures", "cash_flow", "Investing Activities", 1, False, False, 6),
+    StatementLineItem("acquisitions", "Acquisitions", "cash_flow", "Investing Activities", 1, False, False, 7),
+    StatementLineItem("cf_other_investing", "Other Investing Activities", "cash_flow", "Investing Activities", 1, False, False, 8),
+    StatementLineItem("cash_from_investing", "Cash from Investing", "cash_flow", "Investing Activities", 0, True, True, 9),
+    # Financing Activities
+    StatementLineItem("debt_issuance_repayment", "Debt Issuance/Repayment, Net", "cash_flow", "Financing Activities", 1, False, False, 10),
+    StatementLineItem("stock_repurchases", "Stock Repurchases", "cash_flow", "Financing Activities", 1, False, False, 11),
+    StatementLineItem("dividends_paid", "Dividends Paid", "cash_flow", "Financing Activities", 1, False, False, 12),
+    StatementLineItem("cf_other_financing", "Other Financing Activities", "cash_flow", "Financing Activities", 1, False, False, 13),
+    StatementLineItem("cash_from_financing", "Cash from Financing", "cash_flow", "Financing Activities", 0, True, True, 14),
+    # Net Change
+    StatementLineItem("net_change_in_cash", "Net Change in Cash", "cash_flow", "", 0, True, True, 15),
 ]

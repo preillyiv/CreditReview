@@ -1,4 +1,14 @@
-import { ExtractedValue, formatCurrency } from '../api/client';
+import { useState } from 'react';
+import {
+  ExtractedValue,
+  VerificationResult,
+  VerificationCheck,
+  StatementLineItem,
+  INCOME_STATEMENT_ITEMS,
+  BALANCE_SHEET_ITEMS,
+  CASH_FLOW_ITEMS,
+  formatCurrency,
+} from '../api/client';
 import { SourcePopover } from './SourcePopover';
 
 interface FinancialStatementsTableProps {
@@ -8,92 +18,230 @@ interface FinancialStatementsTableProps {
   editedValues: Record<string, any>;
   onValueChange: (metricKey: string, value: number | undefined, isPrior: boolean) => void;
   onResetValue?: (metricKey: string, isPrior: boolean) => void;
+  verification: VerificationResult | null;
 }
 
-interface LineItem {
-  key: string;
-  label: string;
-  isBold: boolean;
-}
+function VerificationBadge({ checks }: { checks: VerificationCheck[] }) {
+  const activeChecks = checks.filter((c) => !c.skipped);
+  if (activeChecks.length === 0) return null;
 
-function StatementRow({
-  item,
-  ev,
-  currentVal,
-  priorVal,
-  delta,
-}: {
-  item: LineItem;
-  ev: ExtractedValue;
-  currentVal: number;
-  priorVal: number;
-  delta: number;
-}) {
-  const isPercentage = item.key.includes('margin');
-  const deltaColor = !isPercentage && (delta >= 0 ? '#d4edda' : '#f8d7da');
+  const allPassed = activeChecks.every((c) => c.passed);
+  const hasErrors = activeChecks.some((c) => !c.passed && c.severity === 'error');
 
-  const formatValue = (value: number) => {
-    if (isPercentage) {
-      return `${(value * 100).toFixed(1)}%`;
-    }
-    return formatCurrency(value);
-  };
+  const color = allPassed ? '#28a745' : hasErrors ? '#dc3545' : '#ffc107';
+  const label = allPassed
+    ? 'Verified'
+    : hasErrors
+    ? `${activeChecks.filter((c) => !c.passed).length} issue(s)`
+    : `${activeChecks.filter((c) => !c.passed).length} warning(s)`;
 
   return (
-    <tr style={{ backgroundColor: item.isBold ? '#f5f5f5' : 'white' }}>
+    <span
+      style={{
+        display: 'inline-block',
+        padding: '0.15rem 0.5rem',
+        borderRadius: '12px',
+        backgroundColor: color,
+        color: allPassed || hasErrors ? 'white' : '#333',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        marginLeft: '0.5rem',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function VerificationAlerts({ checks }: { checks: VerificationCheck[] }) {
+  const failedChecks = checks.filter((c) => !c.passed && !c.skipped);
+  if (failedChecks.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: '0.5rem' }}>
+      {failedChecks.map((check) => (
+        <div
+          key={`${check.check_id}-${check.year}`}
+          style={{
+            padding: '0.5rem 0.75rem',
+            marginBottom: '0.25rem',
+            borderRadius: '4px',
+            fontSize: '0.85rem',
+            backgroundColor: check.severity === 'error' ? '#f8d7da' : '#fff3cd',
+            color: check.severity === 'error' ? '#721c24' : '#856404',
+            border: `1px solid ${check.severity === 'error' ? '#f5c6cb' : '#ffeeba'}`,
+          }}
+        >
+          <strong>{check.severity === 'error' ? 'Error' : 'Warning'}</strong> ({check.year}): {check.formula}
+          {' — '}
+          Diff: {formatCurrency(check.difference)} ({(check.tolerance * 100).toFixed(1)}% tolerance)
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EditableCell({
+  metricKey,
+  value,
+  originalValue,
+  isPrior,
+  isBold,
+  onValueChange,
+  onResetValue,
+}: {
+  metricKey: string;
+  value: number;
+  originalValue: number;
+  isPrior: boolean;
+  isBold: boolean;
+  onValueChange: (metricKey: string, value: number | undefined, isPrior: boolean) => void;
+  onResetValue?: (metricKey: string, isPrior: boolean) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [inputVal, setInputVal] = useState('');
+  const isEdited = value !== originalValue;
+
+  const handleClick = () => {
+    setInputVal(String(value));
+    setEditing(true);
+  };
+
+  const handleBlur = () => {
+    setEditing(false);
+    const parsed = parseFloat(inputVal);
+    if (!isNaN(parsed) && parsed !== originalValue) {
+      onValueChange(metricKey, parsed, isPrior);
+    } else if (inputVal === '' || parsed === originalValue) {
+      onValueChange(metricKey, undefined, isPrior);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      setEditing(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <td style={{ padding: '0.25rem', border: '1px solid #ddd', textAlign: 'center' }}>
+        <input
+          type="text"
+          value={inputVal}
+          onChange={(e) => setInputVal(e.target.value)}
+          onBlur={handleBlur}
+          onKeyDown={handleKeyDown}
+          autoFocus
+          style={{
+            width: '100%',
+            padding: '0.25rem',
+            textAlign: 'center',
+            border: '2px solid #4472C4',
+            borderRadius: '2px',
+            fontSize: '0.9rem',
+          }}
+        />
+      </td>
+    );
+  }
+
+  return (
+    <td
+      onClick={handleClick}
+      style={{
+        padding: '0.75rem',
+        border: '1px solid #ddd',
+        textAlign: 'center',
+        fontWeight: isBold ? '600' : 'normal',
+        cursor: 'pointer',
+        backgroundColor: isEdited ? '#fff3cd' : undefined,
+        position: 'relative',
+      }}
+      title="Click to edit"
+    >
+      {formatCurrency(value)}
+      {isEdited && onResetValue && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onResetValue(metricKey, isPrior);
+          }}
+          style={{
+            position: 'absolute',
+            top: '2px',
+            right: '2px',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '0.7rem',
+            color: '#999',
+            padding: '0',
+            lineHeight: '1',
+          }}
+          title="Reset to original"
+        >
+          x
+        </button>
+      )}
+    </td>
+  );
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <tr>
       <td
+        colSpan={5}
         style={{
-          padding: '0.75rem',
-          border: '1px solid #ddd',
-          paddingLeft: !item.isBold ? '2rem' : '0.75rem',
-          fontWeight: item.isBold ? '600' : 'normal',
-          textAlign: 'left',
+          padding: '0.5rem 0.75rem',
+          fontWeight: 600,
+          fontSize: '0.85rem',
+          color: '#1f4e79',
+          backgroundColor: '#e8ecf0',
+          borderBottom: '1px solid #ccc',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
         }}
       >
-        <span className="tooltip">
-          {item.label}
-          {ev.llm_reasoning && <span className="tooltip-text">{ev.llm_reasoning}</span>}
-        </span>
-      </td>
-      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center', fontWeight: item.isBold ? '600' : 'normal' }}>
-        {formatValue(currentVal)}
-      </td>
-      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center', fontWeight: item.isBold ? '600' : 'normal' }}>
-        {formatValue(priorVal)}
-      </td>
-      <td
-        style={{
-          padding: '0.75rem',
-          border: '1px solid #ddd',
-          textAlign: 'center',
-          backgroundColor: deltaColor,
-          fontWeight: item.isBold ? '600' : 'normal',
-        }}
-      >
-        {formatValue(delta)}
-      </td>
-      <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
-        {ev.citation && <SourcePopover citation={ev.citation} />}
+        {label}
       </td>
     </tr>
   );
 }
 
-function StatementTable({
+function StatementSection({
   title,
   items,
   rawValues,
   fiscalYearEnd,
   fiscalYearEndPrior,
   editedValues,
+  onValueChange,
+  onResetValue,
+  checks,
 }: {
   title: string;
-  items: LineItem[];
+  items: StatementLineItem[];
   rawValues: Record<string, ExtractedValue>;
   fiscalYearEnd: string;
   fiscalYearEndPrior: string;
   editedValues: Record<string, any>;
+  onValueChange: (metricKey: string, value: number | undefined, isPrior: boolean) => void;
+  onResetValue?: (metricKey: string, isPrior: boolean) => void;
+  checks: VerificationCheck[];
 }) {
+  const [expanded, setExpanded] = useState(true);
+
+  // Filter to items present in rawValues
+  const visibleItems = items.filter((item) => rawValues[item.metric_key]);
+  const totalItems = items.length;
+  const foundItems = visibleItems.length;
+
+  if (foundItems === 0) return null;
+
   const getCurrentValue = (metricKey: string): number => {
     const edited = editedValues[metricKey];
     return edited?.value !== undefined ? edited.value : rawValues[metricKey]?.value ?? 0;
@@ -106,54 +254,135 @@ function StatementTable({
 
   const getFiscalYear = (dateStr: string): string => dateStr.split('-')[0] || dateStr;
 
-  // Filter to only items that exist in rawValues
-  const visibleItems = items.filter((item) => rawValues[item.key]);
-
-  if (visibleItems.length === 0) return null;
+  // Track sections for section headers
+  let lastSection = '';
 
   return (
-    <div style={{ marginBottom: '2rem' }}>
-      <h4 style={{ marginBottom: '0.75rem', color: '#1f4e79' }}>{title}</h4>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
-        <thead>
-          <tr style={{ backgroundColor: '#1f4e79', color: 'white' }}>
-            {['Item', `FY ${getFiscalYear(fiscalYearEnd)}`, `FY ${getFiscalYear(fiscalYearEndPrior)}`, 'Delta', 'Source'].map(
-              (header, idx) => (
-                <th
-                  key={header}
-                  style={{
-                    padding: '0.75rem',
-                    border: '1px solid #ddd',
-                    textAlign: idx === 0 ? 'left' : 'center',
-                    minWidth: idx === 0 ? 'auto' : idx === 4 ? '80px' : '100px',
-                  }}
-                >
-                  {header}
-                </th>
-              )
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {visibleItems.map((item) => {
-            const ev = rawValues[item.key];
-            const currentVal = getCurrentValue(item.key);
-            const priorVal = getPriorValue(item.key);
-            const delta = currentVal - priorVal;
+    <div style={{ marginBottom: '1.5rem' }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.75rem 1rem',
+          backgroundColor: '#1f4e79',
+          color: 'white',
+          cursor: 'pointer',
+          borderRadius: expanded ? '6px 6px 0 0' : '6px',
+          userSelect: 'none',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center' }}>
+          <span style={{ marginRight: '0.5rem', fontSize: '0.8rem' }}>{expanded ? '\u25BC' : '\u25B6'}</span>
+          <h4 style={{ margin: 0, fontSize: '1rem' }}>{title}</h4>
+          <span style={{ marginLeft: '0.75rem', fontSize: '0.8rem', opacity: 0.8 }}>
+            {foundItems} of {totalItems} items found
+          </span>
+          {/* Verification badge hidden for now */}
+        </div>
+      </div>
 
-            return (
-              <StatementRow
-                key={item.key}
-                item={item}
-                ev={ev}
-                currentVal={currentVal}
-                priorVal={priorVal}
-                delta={delta}
-              />
-            );
-          })}
-        </tbody>
-      </table>
+      {expanded && (
+        <div style={{ border: '1px solid #ddd', borderTop: 'none', borderRadius: '0 0 6px 6px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.95rem' }}>
+            <thead>
+              <tr>
+                {['Item', `FY ${getFiscalYear(fiscalYearEnd)}`, `FY ${getFiscalYear(fiscalYearEndPrior)}`, 'Delta', 'Source'].map(
+                  (header, idx) => (
+                    <th
+                      key={header}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        border: '1px solid #ddd',
+                        textAlign: idx === 0 ? 'left' : 'center',
+                        minWidth: idx === 0 ? 'auto' : idx === 4 ? '80px' : '100px',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {header}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {visibleItems.map((item) => {
+                const ev = rawValues[item.metric_key];
+                const currentVal = getCurrentValue(item.metric_key);
+                const priorVal = getPriorValue(item.metric_key);
+                const delta = currentVal - priorVal;
+                const deltaColor = delta >= 0 ? '#d4edda' : '#f8d7da';
+
+                // Insert section header if section changed
+                const rows: React.ReactNode[] = [];
+                if (item.section && item.section !== lastSection) {
+                  lastSection = item.section;
+                  rows.push(<SectionHeader key={`section-${item.section}`} label={item.section} />);
+                } else if (!item.section && lastSection) {
+                  lastSection = '';
+                }
+
+                rows.push(
+                  <tr key={item.metric_key} style={{ backgroundColor: item.is_bold ? '#f8f9fa' : 'white' }}>
+                    <td
+                      style={{
+                        padding: '0.75rem',
+                        paddingLeft: item.indent_level > 0 ? '2rem' : '0.75rem',
+                        border: '1px solid #ddd',
+                        fontWeight: item.is_bold ? '600' : 'normal',
+                        textAlign: 'left',
+                        borderTop: item.is_subtotal ? '2px solid #999' : undefined,
+                      }}
+                    >
+                      <span className="tooltip">
+                        {item.display_name}
+                        {ev.llm_reasoning && <span className="tooltip-text">{ev.llm_reasoning}</span>}
+                      </span>
+                    </td>
+                    <EditableCell
+                      metricKey={item.metric_key}
+                      value={currentVal}
+                      originalValue={ev.value}
+                      isPrior={false}
+                      isBold={item.is_bold}
+                      onValueChange={onValueChange}
+                      onResetValue={onResetValue}
+                    />
+                    <EditableCell
+                      metricKey={item.metric_key}
+                      value={priorVal}
+                      originalValue={ev.value_prior}
+                      isPrior={true}
+                      isBold={item.is_bold}
+                      onValueChange={onValueChange}
+                      onResetValue={onResetValue}
+                    />
+                    <td
+                      style={{
+                        padding: '0.75rem',
+                        border: '1px solid #ddd',
+                        textAlign: 'center',
+                        backgroundColor: deltaColor,
+                        fontWeight: item.is_bold ? '600' : 'normal',
+                      }}
+                    >
+                      {formatCurrency(delta)}
+                    </td>
+                    <td style={{ padding: '0.75rem', border: '1px solid #ddd', textAlign: 'center' }}>
+                      {ev.citation && <SourcePopover citation={ev.citation} />}
+                    </td>
+                  </tr>
+                );
+
+                return rows;
+              })}
+            </tbody>
+          </table>
+
+          {/* Verification alerts hidden for now */}
+        </div>
+      )}
     </div>
   );
 }
@@ -165,62 +394,54 @@ export function FinancialStatementsTable({
   editedValues,
   onValueChange,
   onResetValue,
+  verification,
 }: FinancialStatementsTableProps) {
-  const incomeStatementItems: LineItem[] = [
-    { key: 'revenue', label: 'Top Line Revenue', isBold: true },
-    { key: 'cost_of_revenue', label: 'Cost of Revenue', isBold: false },
-    { key: 'gross_profit', label: 'Gross Profit', isBold: true },
-    { key: 'depreciation_amortization', label: 'Depreciation & Amortization', isBold: false },
-    { key: 'interest_expense', label: 'Interest Expense', isBold: false },
-    { key: 'operating_income', label: 'Operating Income', isBold: true },
-    { key: 'net_income', label: 'Net Income', isBold: true },
-    { key: 'gross_margin', label: 'Gross Profit Margin %', isBold: false },
-    { key: 'operating_margin', label: 'Operating Income Margin %', isBold: false },
-    { key: 'net_margin', label: 'Net Income Margin %', isBold: false },
-  ];
-
-  const balanceSheetItems: LineItem[] = [
-    { key: 'current_assets', label: 'Current Assets', isBold: true },
-    { key: 'accounts_receivable', label: 'Accounts Receivable', isBold: false },
-    { key: 'intangible_assets', label: 'Intangible Assets', isBold: false },
-    { key: 'goodwill', label: 'Goodwill', isBold: false },
-    { key: 'total_assets', label: 'Total Assets', isBold: true },
-    { key: 'current_liabilities', label: 'Current Liabilities', isBold: true },
-    { key: 'total_debt', label: 'Total Debt', isBold: false },
-    { key: 'total_liabilities', label: 'Total Liabilities', isBold: true },
-    { key: 'stockholders_equity', label: "Stockholders' Equity", isBold: true },
-  ];
-
-  const liquidityItems: LineItem[] = [
-    { key: 'cash', label: 'Cash & Cash Equivalents', isBold: true },
-    { key: 'tangible_net_worth', label: 'Tangible Net Worth', isBold: true },
-  ];
+  // Get checks relevant to each statement
+  const getChecksForStatement = (statementType: string): VerificationCheck[] => {
+    if (!verification) return [];
+    const checkMap: Record<string, string[]> = {
+      income_statement: ['gross_profit', 'operating_income', 'net_income'],
+      balance_sheet: ['current_assets', 'accounting_equation', 'current_liabilities'],
+      cash_flow: ['cash_flow'],
+    };
+    const relevantIds = checkMap[statementType] || [];
+    return verification.checks.filter((c) => relevantIds.includes(c.check_id));
+  };
 
   return (
     <div style={{ width: '100%' }}>
-      <StatementTable
+      <StatementSection
         title="Income Statement"
-        items={incomeStatementItems}
+        items={INCOME_STATEMENT_ITEMS}
         rawValues={rawValues}
         fiscalYearEnd={fiscalYearEnd}
         fiscalYearEndPrior={fiscalYearEndPrior}
         editedValues={editedValues}
+        onValueChange={onValueChange}
+        onResetValue={onResetValue}
+        checks={getChecksForStatement('income_statement')}
       />
-      <StatementTable
+      <StatementSection
         title="Balance Sheet"
-        items={balanceSheetItems}
+        items={BALANCE_SHEET_ITEMS}
         rawValues={rawValues}
         fiscalYearEnd={fiscalYearEnd}
         fiscalYearEndPrior={fiscalYearEndPrior}
         editedValues={editedValues}
+        onValueChange={onValueChange}
+        onResetValue={onResetValue}
+        checks={getChecksForStatement('balance_sheet')}
       />
-      <StatementTable
-        title="Liquidity & Equity"
-        items={liquidityItems}
+      <StatementSection
+        title="Cash Flow Statement"
+        items={CASH_FLOW_ITEMS}
         rawValues={rawValues}
         fiscalYearEnd={fiscalYearEnd}
         fiscalYearEndPrior={fiscalYearEndPrior}
         editedValues={editedValues}
+        onValueChange={onValueChange}
+        onResetValue={onResetValue}
+        checks={getChecksForStatement('cash_flow')}
       />
     </div>
   );

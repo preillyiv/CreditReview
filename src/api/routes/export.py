@@ -196,6 +196,7 @@ async def export_report(request: ExportReportRequest):
         sp_outlook=request.manual_inputs.sp_outlook,
         moodys_rating=request.manual_inputs.moodys_rating,
         moodys_outlook=request.manual_inputs.moodys_outlook,
+        session=session,
     )
     doc_buffer.seek(0)
 
@@ -297,6 +298,7 @@ async def export_pdf(request: ExportReportRequest):
             sp_outlook=request.manual_inputs.sp_outlook,
             moodys_rating=request.manual_inputs.moodys_rating,
             moodys_outlook=request.manual_inputs.moodys_outlook,
+            session=session,
         )
 
         # Convert to PDF using LibreOffice

@@ -18,9 +18,17 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
-from src.models.extraction import ExtractionSession, CalculationStep, METRIC_DISPLAY_NAMES
+from src.models.extraction import (
+    ExtractionSession,
+    CalculationStep,
+    METRIC_DISPLAY_NAMES,
+    INCOME_STATEMENT_ITEMS,
+    BALANCE_SHEET_ITEMS,
+    CASH_FLOW_ITEMS,
+)
 from src.calculators.metrics import FinancialMetrics
 from src.calculators.ratios import FinancialRatios
+from src.calculators.verification import VerificationResult
 
 
 # Style constants
@@ -72,6 +80,7 @@ def generate_excel_report(
     metrics: FinancialMetrics,
     ratios: FinancialRatios,
     calculation_steps: list[CalculationStep],
+    verification: VerificationResult = None,
 ) -> io.BytesIO:
     """
     Generate an Excel workbook with financial data and formulas.
@@ -81,6 +90,7 @@ def generate_excel_report(
         metrics: Calculated financial metrics
         ratios: Calculated financial ratios
         calculation_steps: Audit trail of calculations
+        verification: Optional verification results
 
     Returns:
         BytesIO buffer containing the Excel file
@@ -92,8 +102,13 @@ def generate_excel_report(
 
     # Create sheets
     _create_raw_values_sheet(wb, session)
+    _create_statement_sheet(wb, session, "Income Statement", INCOME_STATEMENT_ITEMS)
+    _create_statement_sheet(wb, session, "Balance Sheet", BALANCE_SHEET_ITEMS)
+    _create_statement_sheet(wb, session, "Cash Flow", CASH_FLOW_ITEMS)
     _create_metrics_sheet(wb, session, metrics)
     _create_ratios_sheet(wb, session, ratios, metrics)
+    if verification:
+        _create_verification_sheet(wb, verification)
     _create_audit_sheet(wb, calculation_steps)
 
     # Save to buffer
@@ -600,6 +615,158 @@ def _create_ratios_sheet(
     ws.column_dimensions['C'].width = 18
     ws.column_dimensions['D'].width = 18
     ws.column_dimensions['E'].width = 40
+
+
+SECTION_FILL = PatternFill(start_color="D9E2F3", end_color="D9E2F3", fill_type="solid")
+SUBTOTAL_FONT = Font(bold=True)
+SUBTOTAL_BORDER = Border(
+    left=Side(style='thin'),
+    right=Side(style='thin'),
+    top=Side(style='medium'),
+    bottom=Side(style='thin'),
+)
+
+
+def _create_statement_sheet(
+    wb: Workbook,
+    session: ExtractionSession,
+    sheet_name: str,
+    items: list,
+):
+    """Create a financial statement sheet (Income Statement, Balance Sheet, or Cash Flow)."""
+    ws = wb.create_sheet(sheet_name)
+
+    # Headers
+    headers = ["Item", "Current Year", "Prior Year", "YoY Delta"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        _apply_header_style(cell)
+
+    row = 2
+    last_section = ""
+    raw_row_map = {}  # metric_key -> row number for formulas
+
+    for item in items:
+        if item.metric_key not in session.raw_values:
+            continue
+
+        # Section header
+        if item.section and item.section != last_section:
+            last_section = item.section
+            section_cell = ws.cell(row=row, column=1, value=item.section.upper())
+            section_cell.font = Font(bold=True, color="1F4E79", size=10)
+            section_cell.fill = SECTION_FILL
+            for col in range(2, 5):
+                ws.cell(row=row, column=col).fill = SECTION_FILL
+            row += 1
+        elif not item.section and last_section:
+            last_section = ""
+
+        ev = session.raw_values[item.metric_key]
+        raw_row_map[item.metric_key] = row
+
+        # Label with indent
+        label = ("    " if item.indent_level > 0 else "") + item.display_name
+        ws.cell(row=row, column=1, value=label)
+
+        # Values
+        ws.cell(row=row, column=2, value=ev.value)
+        ws.cell(row=row, column=3, value=ev.value_prior)
+
+        # Delta formula
+        ws.cell(row=row, column=4, value=f"=B{row}-C{row}")
+        _apply_data_style(ws.cell(row=row, column=4), is_formula=True)
+
+        # Number formats
+        ws.cell(row=row, column=2).number_format = '#,##0'
+        ws.cell(row=row, column=3).number_format = '#,##0'
+        ws.cell(row=row, column=4).number_format = '#,##0'
+
+        # Bold + border for subtotal rows
+        if item.is_bold:
+            for col in range(1, 5):
+                cell = ws.cell(row=row, column=col)
+                cell.font = SUBTOTAL_FONT
+                if item.is_subtotal:
+                    cell.border = SUBTOTAL_BORDER
+
+        # Apply cell borders
+        for col in range(1, 5):
+            ws.cell(row=row, column=col).border = THIN_BORDER
+
+        row += 1
+
+    # Auto-fit columns
+    ws.column_dimensions['A'].width = 35
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['D'].width = 18
+
+
+def _create_verification_sheet(wb: Workbook, verification: VerificationResult):
+    """Create the Verification sheet showing all checks with pass/fail."""
+    ws = wb.create_sheet("Verification")
+
+    # Summary at top
+    ws.cell(row=1, column=1, value="Verification Summary")
+    ws.cell(row=1, column=1).font = Font(bold=True, size=12, color="1F4E79")
+
+    ws.cell(row=2, column=1, value=f"Passed: {verification.pass_count}")
+    ws.cell(row=2, column=1).font = Font(color="006100")
+    ws.cell(row=2, column=2, value=f"Failed: {verification.fail_count}")
+    ws.cell(row=2, column=2).font = Font(color="9C0006")
+    ws.cell(row=2, column=3, value=f"Skipped: {verification.skip_count}")
+    ws.cell(row=2, column=3).font = Font(color="808080")
+
+    # Headers
+    headers = ["Check", "Year", "Formula", "LHS Value", "RHS Value", "Difference", "Tolerance", "Result", "Severity"]
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=4, column=col, value=header)
+        _apply_header_style(cell)
+
+    # Data rows
+    for idx, check in enumerate(verification.checks, 5):
+        ws.cell(row=idx, column=1, value=check.description)
+        ws.cell(row=idx, column=2, value=check.year)
+        ws.cell(row=idx, column=3, value=check.formula)
+        ws.cell(row=idx, column=4, value=check.lhs_value)
+        ws.cell(row=idx, column=5, value=check.rhs_value)
+        ws.cell(row=idx, column=6, value=check.difference)
+        ws.cell(row=idx, column=7, value=f"{check.tolerance * 100:.1f}%")
+
+        result_text = "SKIP" if check.skipped else ("PASS" if check.passed else "FAIL")
+        result_cell = ws.cell(row=idx, column=8, value=result_text)
+
+        if check.skipped:
+            result_cell.font = Font(color="808080")
+        elif check.passed:
+            result_cell.font = Font(color="006100", bold=True)
+            result_cell.fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+        else:
+            result_cell.font = Font(color="9C0006", bold=True)
+            result_cell.fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+
+        ws.cell(row=idx, column=9, value=check.severity.upper())
+
+        # Number formats
+        ws.cell(row=idx, column=4).number_format = '#,##0'
+        ws.cell(row=idx, column=5).number_format = '#,##0'
+        ws.cell(row=idx, column=6).number_format = '#,##0'
+
+        # Borders
+        for col in range(1, 10):
+            ws.cell(row=idx, column=col).border = THIN_BORDER
+
+    # Auto-fit columns
+    ws.column_dimensions['A'].width = 25
+    ws.column_dimensions['B'].width = 10
+    ws.column_dimensions['C'].width = 50
+    ws.column_dimensions['D'].width = 18
+    ws.column_dimensions['E'].width = 18
+    ws.column_dimensions['F'].width = 18
+    ws.column_dimensions['G'].width = 12
+    ws.column_dimensions['H'].width = 10
+    ws.column_dimensions['I'].width = 10
 
 
 def _create_audit_sheet(wb: Workbook, calculation_steps: list[CalculationStep]):

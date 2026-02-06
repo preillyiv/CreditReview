@@ -43,6 +43,40 @@ export interface NotFoundMetric {
   llm_note: string;
 }
 
+export interface VerificationCheck {
+  check_id: string;
+  description: string;
+  formula: string;
+  lhs_value: number;
+  rhs_value: number;
+  difference: number;
+  tolerance: number;
+  passed: boolean;
+  severity: string;
+  year: string;
+  skipped: boolean;
+}
+
+export interface VerificationResult {
+  checks: VerificationCheck[];
+  pass_count: number;
+  fail_count: number;
+  warning_count: number;
+  error_count: number;
+  skip_count: number;
+}
+
+export interface StatementLineItem {
+  metric_key: string;
+  display_name: string;
+  statement: string;
+  section: string;
+  indent_level: number;
+  is_subtotal: boolean;
+  is_bold: boolean;
+  sort_order: number;
+}
+
 export interface ExtractResponse {
   session_id: string;
   ticker: string;
@@ -56,7 +90,70 @@ export interface ExtractResponse {
   not_found: NotFoundMetric[];
   llm_notes: string[];
   llm_warnings: string[];
+  verification: VerificationResult | null;
 }
+
+// === Financial Statement Line Item Registries ===
+
+export const INCOME_STATEMENT_ITEMS: StatementLineItem[] = [
+  { metric_key: 'revenue', display_name: 'Top Line Revenue', statement: 'income_statement', section: '', indent_level: 0, is_subtotal: false, is_bold: true, sort_order: 0 },
+  { metric_key: 'cost_of_revenue', display_name: 'Cost of Revenue', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 1 },
+  { metric_key: 'gross_profit', display_name: 'Gross Profit', statement: 'income_statement', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 2 },
+  { metric_key: 'sga_expense', display_name: 'Selling, General & Administrative', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 3 },
+  { metric_key: 'rd_expense', display_name: 'Research & Development', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 4 },
+  { metric_key: 'depreciation_amortization', display_name: 'Depreciation & Amortization', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 5 },
+  { metric_key: 'other_operating_expense', display_name: 'Other Operating Expenses', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 6 },
+  { metric_key: 'total_operating_expenses', display_name: 'Total Operating Expenses', statement: 'income_statement', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 7 },
+  { metric_key: 'operating_income', display_name: 'Operating Income', statement: 'income_statement', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 8 },
+  { metric_key: 'interest_expense', display_name: 'Interest Expense', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 9 },
+  { metric_key: 'other_income_expense', display_name: 'Other Income/Expense, Net', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 10 },
+  { metric_key: 'income_before_tax', display_name: 'Income Before Income Tax', statement: 'income_statement', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 11 },
+  { metric_key: 'income_tax_expense', display_name: 'Income Tax Expense', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 12 },
+  { metric_key: 'net_income', display_name: 'Net Income', statement: 'income_statement', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 13 },
+  { metric_key: 'stock_compensation', display_name: 'Stock-Based Compensation', statement: 'income_statement', section: '', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 14 },
+];
+
+export const BALANCE_SHEET_ITEMS: StatementLineItem[] = [
+  { metric_key: 'cash', display_name: 'Cash & Cash Equivalents', statement: 'balance_sheet', section: 'Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 0 },
+  { metric_key: 'short_term_investments', display_name: 'Short-term Investments', statement: 'balance_sheet', section: 'Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 1 },
+  { metric_key: 'accounts_receivable', display_name: 'Accounts Receivable', statement: 'balance_sheet', section: 'Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 2 },
+  { metric_key: 'inventories', display_name: 'Inventories', statement: 'balance_sheet', section: 'Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 3 },
+  { metric_key: 'other_current_assets', display_name: 'Other Current Assets', statement: 'balance_sheet', section: 'Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 4 },
+  { metric_key: 'current_assets', display_name: 'Total Current Assets', statement: 'balance_sheet', section: 'Current Assets', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 5 },
+  { metric_key: 'ppe_net', display_name: 'Property, Plant & Equipment, Net', statement: 'balance_sheet', section: 'Non-Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 6 },
+  { metric_key: 'goodwill', display_name: 'Goodwill', statement: 'balance_sheet', section: 'Non-Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 7 },
+  { metric_key: 'intangible_assets', display_name: 'Intangible Assets', statement: 'balance_sheet', section: 'Non-Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 8 },
+  { metric_key: 'other_noncurrent_assets', display_name: 'Other Non-Current Assets', statement: 'balance_sheet', section: 'Non-Current Assets', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 9 },
+  { metric_key: 'total_assets', display_name: 'Total Assets', statement: 'balance_sheet', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 10 },
+  { metric_key: 'accounts_payable', display_name: 'Accounts Payable', statement: 'balance_sheet', section: 'Current Liabilities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 11 },
+  { metric_key: 'short_term_debt', display_name: 'Short-term Debt', statement: 'balance_sheet', section: 'Current Liabilities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 12 },
+  { metric_key: 'accrued_liabilities', display_name: 'Accrued Liabilities', statement: 'balance_sheet', section: 'Current Liabilities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 13 },
+  { metric_key: 'other_current_liabilities', display_name: 'Other Current Liabilities', statement: 'balance_sheet', section: 'Current Liabilities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 14 },
+  { metric_key: 'current_liabilities', display_name: 'Total Current Liabilities', statement: 'balance_sheet', section: 'Current Liabilities', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 15 },
+  { metric_key: 'long_term_debt', display_name: 'Long-term Debt', statement: 'balance_sheet', section: 'Non-Current Liabilities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 16 },
+  { metric_key: 'other_noncurrent_liabilities', display_name: 'Other Non-Current Liabilities', statement: 'balance_sheet', section: 'Non-Current Liabilities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 17 },
+  { metric_key: 'total_liabilities', display_name: 'Total Liabilities', statement: 'balance_sheet', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 18 },
+  { metric_key: 'stockholders_equity', display_name: "Stockholders' Equity", statement: 'balance_sheet', section: 'Equity', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 19 },
+];
+
+export const CASH_FLOW_ITEMS: StatementLineItem[] = [
+  { metric_key: 'cf_net_income', display_name: 'Net Income', statement: 'cash_flow', section: 'Operating Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 0 },
+  { metric_key: 'cf_depreciation_amortization', display_name: 'Depreciation & Amortization', statement: 'cash_flow', section: 'Operating Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 1 },
+  { metric_key: 'cf_stock_compensation', display_name: 'Stock-Based Compensation', statement: 'cash_flow', section: 'Operating Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 2 },
+  { metric_key: 'cf_working_capital_changes', display_name: 'Changes in Working Capital', statement: 'cash_flow', section: 'Operating Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 3 },
+  { metric_key: 'cf_other_operating', display_name: 'Other Operating Activities', statement: 'cash_flow', section: 'Operating Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 4 },
+  { metric_key: 'cash_from_operations', display_name: 'Cash from Operations', statement: 'cash_flow', section: 'Operating Activities', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 5 },
+  { metric_key: 'capital_expenditures', display_name: 'Capital Expenditures', statement: 'cash_flow', section: 'Investing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 6 },
+  { metric_key: 'acquisitions', display_name: 'Acquisitions', statement: 'cash_flow', section: 'Investing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 7 },
+  { metric_key: 'cf_other_investing', display_name: 'Other Investing Activities', statement: 'cash_flow', section: 'Investing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 8 },
+  { metric_key: 'cash_from_investing', display_name: 'Cash from Investing', statement: 'cash_flow', section: 'Investing Activities', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 9 },
+  { metric_key: 'debt_issuance_repayment', display_name: 'Debt Issuance/Repayment, Net', statement: 'cash_flow', section: 'Financing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 10 },
+  { metric_key: 'stock_repurchases', display_name: 'Stock Repurchases', statement: 'cash_flow', section: 'Financing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 11 },
+  { metric_key: 'dividends_paid', display_name: 'Dividends Paid', statement: 'cash_flow', section: 'Financing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 12 },
+  { metric_key: 'cf_other_financing', display_name: 'Other Financing Activities', statement: 'cash_flow', section: 'Financing Activities', indent_level: 1, is_subtotal: false, is_bold: false, sort_order: 13 },
+  { metric_key: 'cash_from_financing', display_name: 'Cash from Financing', statement: 'cash_flow', section: 'Financing Activities', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 14 },
+  { metric_key: 'net_change_in_cash', display_name: 'Net Change in Cash', statement: 'cash_flow', section: '', indent_level: 0, is_subtotal: true, is_bold: true, sort_order: 15 },
+];
 
 export interface CalculatedMetrics {
   tangible_net_worth: number;
@@ -193,6 +290,30 @@ export async function approveExtraction(
   if (!response.ok) {
     const error = await response.json();
     throw new Error(error.detail || 'Failed to approve extraction');
+  }
+
+  return response.json();
+}
+
+/**
+ * Re-run verification checks with current edited values.
+ */
+export async function verifySession(
+  sessionId: string,
+  editedValues: EditedValue[] = []
+): Promise<VerificationResult> {
+  const response = await fetch(`${API_BASE}/verify`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      edited_values: editedValues,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.detail || 'Failed to verify');
   }
 
   return response.json();

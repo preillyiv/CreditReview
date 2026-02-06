@@ -1,14 +1,14 @@
 import { useState, FormEvent, ChangeEvent } from 'react';
 
 export type InputMode = 'ticker' | 'pdf';
-export type LLMModel = 'claude-opus-4-5-20251101' | 'claude-sonnet-4-5-20250929' | 'claude-haiku-4-5-20251001';
+export type LLMModel = 'claude-opus-4-6' | 'claude-sonnet-4-5-20250929' | 'claude-haiku-4-5-20251001';
 
 interface DataInputProps {
   onSubmit: (mode: InputMode, data: string | File, model: LLMModel) => void;
 }
 
 const MODEL_OPTIONS: { value: LLMModel; label: string }[] = [
-  { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
   { value: 'claude-sonnet-4-5-20250929', label: 'Claude Sonnet 4.5' },
   { value: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5' },
 ];
@@ -16,7 +16,7 @@ const MODEL_OPTIONS: { value: LLMModel; label: string }[] = [
 export function DataInput({ onSubmit }: DataInputProps) {
   const [ticker, setTicker] = useState('');
   const [file, setFile] = useState<File | null>(null);
-  const [model, setModel] = useState<LLMModel>('claude-opus-4-5-20251101');
+  const [model, setModel] = useState<LLMModel>('claude-opus-4-6');
   const [dragOver, setDragOver] = useState(false);
 
   const handleTickerSubmit = (e: FormEvent) => {

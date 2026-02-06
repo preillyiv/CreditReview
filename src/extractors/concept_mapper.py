@@ -118,10 +118,40 @@ def _build_concept_summary_for_mapping(raw_data: dict, taxonomy: str = "us-gaap"
 def _get_concept_mapping_prompt(company_name: str, ticker: str, concept_summary: str) -> str:
     """Build the prompt for the LLM to map XBRL concepts to required metrics."""
 
-    required_metrics_list = "\n".join([
-        f"- {key}: {METRIC_DISPLAY_NAMES.get(key, key)}"
-        for key in REQUIRED_BASE_METRICS
-    ])
+    # Group metrics by statement for clearer prompt
+    income_stmt_keys = [
+        "revenue", "cost_of_revenue", "gross_profit", "sga_expense", "rd_expense",
+        "depreciation_amortization", "other_operating_expense", "total_operating_expenses",
+        "operating_income", "interest_expense", "other_income_expense",
+        "income_before_tax", "income_tax_expense", "net_income", "stock_compensation",
+    ]
+    balance_sheet_keys = [
+        "cash", "short_term_investments", "accounts_receivable", "inventories",
+        "other_current_assets", "current_assets", "ppe_net", "goodwill",
+        "intangible_assets", "other_noncurrent_assets", "total_assets",
+        "accounts_payable", "short_term_debt", "accrued_liabilities",
+        "other_current_liabilities", "current_liabilities", "long_term_debt",
+        "other_noncurrent_liabilities", "total_liabilities", "stockholders_equity", "total_debt",
+    ]
+    cash_flow_keys = [
+        "cf_net_income", "cf_depreciation_amortization", "cf_stock_compensation",
+        "cf_working_capital_changes", "cf_other_operating", "cash_from_operations",
+        "capital_expenditures", "acquisitions", "cf_other_investing", "cash_from_investing",
+        "debt_issuance_repayment", "stock_repurchases", "dividends_paid",
+        "cf_other_financing", "cash_from_financing", "net_change_in_cash",
+    ]
+
+    def format_group(keys):
+        return "\n".join([f"  - {key}: {METRIC_DISPLAY_NAMES.get(key, key)}" for key in keys])
+
+    required_metrics_list = f"""INCOME STATEMENT:
+{format_group(income_stmt_keys)}
+
+BALANCE SHEET:
+{format_group(balance_sheet_keys)}
+
+CASH FLOW STATEMENT:
+{format_group(cash_flow_keys)}"""
 
     return f"""You are a financial analyst mapping XBRL concepts from SEC EDGAR filings for {company_name} ({ticker}).
 
@@ -217,16 +247,64 @@ Also identify:
 
 4. **Fiscal years**: Determine the two most recent fiscal year ends from the data (use "as of" dates for balance sheet items, period end dates for income statement items)
 
-5. **Common mappings**:
+5. **Common mappings** (use these as hints, not hard rules):
+   INCOME STATEMENT:
    - revenue → RevenueFromContractWithCustomerExcludingAssessedTax, Revenues, SalesRevenueNet
+   - cost_of_revenue → CostOfRevenue, CostOfGoodsAndServicesSold
+   - gross_profit → GrossProfit
+   - sga_expense → SellingGeneralAndAdministrativeExpense
+   - rd_expense → ResearchAndDevelopmentExpense
+   - depreciation_amortization → DepreciationDepletionAndAmortization, DepreciationAndAmortization
+   - other_operating_expense → OtherOperatingIncomeExpenseNet, OtherCostAndExpenseOperating
+   - total_operating_expenses → OperatingExpenses, CostsAndExpenses
+   - operating_income → OperatingIncomeLoss
+   - interest_expense → InterestExpense, InterestExpenseDebt
+   - other_income_expense → NonoperatingIncomeExpense, OtherNonoperatingIncomeExpense
+   - income_before_tax → IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest
+   - income_tax_expense → IncomeTaxExpenseBenefit
    - net_income → NetIncomeLoss, ProfitLoss
+   - stock_compensation → AllocatedShareBasedCompensationExpense, ShareBasedCompensation
+
+   BALANCE SHEET:
+   - cash → CashAndCashEquivalentsAtCarryingValue
+   - short_term_investments → ShortTermInvestments, MarketableSecuritiesCurrent, AvailableForSaleSecuritiesDebtSecuritiesCurrent
+   - accounts_receivable → AccountsReceivableNetCurrent
+   - inventories → InventoryNet
+   - other_current_assets → OtherAssetsCurrent, PrepaidExpenseAndOtherAssetsCurrent
+   - current_assets → AssetsCurrent
+   - ppe_net → PropertyPlantAndEquipmentNet
+   - goodwill → Goodwill
+   - intangible_assets → IntangibleAssetsNetExcludingGoodwill, FiniteLivedIntangibleAssetsNet
+   - other_noncurrent_assets → OtherAssetsNoncurrent
    - total_assets → Assets
+   - accounts_payable → AccountsPayableCurrent
+   - short_term_debt → ShortTermBorrowings, LongTermDebtCurrent, DebtCurrent
+   - accrued_liabilities → AccruedLiabilitiesCurrent
+   - other_current_liabilities → OtherLiabilitiesCurrent
+   - current_liabilities → LiabilitiesCurrent
+   - long_term_debt → LongTermDebtNoncurrent, LongTermDebt
+   - other_noncurrent_liabilities → OtherLiabilitiesNoncurrent
    - total_liabilities → Liabilities
    - stockholders_equity → StockholdersEquity
-   - cash → CashAndCashEquivalentsAtCarryingValue
    - total_debt → LongTermDebtAndCapitalLeaseObligations, DebtLongtermAndShorttermCombinedAmount
-   - depreciation_amortization → DepreciationDepletionAndAmortization
-   - stock_compensation → AllocatedShareBasedCompensationExpense, ShareBasedCompensation
+
+   CASH FLOW STATEMENT:
+   - cf_net_income → NetIncomeLoss, ProfitLoss (same concept, from cash flow context)
+   - cf_depreciation_amortization → DepreciationDepletionAndAmortization (cash flow context)
+   - cf_stock_compensation → ShareBasedCompensation (cash flow context)
+   - cf_working_capital_changes → IncreaseDecreaseInOperatingCapital, IncreaseDecreaseInOtherOperatingLiabilities
+   - cf_other_operating → OtherOperatingActivitiesCashFlowStatement, AdjustmentsNoncashItemsToReconcileNetIncomeLossToCashProvidedByUsedInOperatingActivities
+   - cash_from_operations → NetCashProvidedByUsedInOperatingActivities
+   - capital_expenditures → PaymentsToAcquirePropertyPlantAndEquipment
+   - acquisitions → PaymentsToAcquireBusinessesNetOfCashAcquired
+   - cf_other_investing → PaymentsForProceedsFromOtherInvestingActivities
+   - cash_from_investing → NetCashProvidedByUsedInInvestingActivities
+   - debt_issuance_repayment → ProceedsFromRepaymentsOfDebt, NetProceedsPaymentsRelatedToDebt
+   - stock_repurchases → PaymentsForRepurchaseOfCommonStock
+   - dividends_paid → PaymentsOfDividends, PaymentsOfDividendsCommonStock
+   - cf_other_financing → ProceedsFromPaymentsForOtherFinancingActivities
+   - cash_from_financing → NetCashProvidedByUsedInFinancingActivities
+   - net_change_in_cash → CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalentsPeriodIncreaseDecreaseIncludingExchangeRateEffect
 
 6. **Notable unmapped**: Include concepts that might be relevant for:
    - Adjusted EBITDA calculations (restructuring, impairments, one-time items)
@@ -265,7 +343,7 @@ def map_concepts(ticker: str) -> ConceptMappingResult | None:
 
     message = client.messages.create(
         model="claude-sonnet-4-20250514",  # Use Sonnet for faster, cheaper mapping
-        max_tokens=8000,
+        max_tokens=12000,
         messages=[
             {"role": "user", "content": prompt}
         ]
@@ -312,7 +390,7 @@ def map_concepts_with_raw_data(
     ticker: str,
     cik: str,
     raw_data: dict,
-    model: str = "claude-opus-4-5-20251101"
+    model: str = "claude-opus-4-6"
 ) -> ConceptMappingResult | None:
     """
     Use LLM to map XBRL concepts to required financial metrics.
@@ -337,7 +415,7 @@ def map_concepts_with_raw_data(
 
     message = client.messages.create(
         model=model,
-        max_tokens=8000,
+        max_tokens=12000,
         messages=[
             {"role": "user", "content": prompt}
         ]

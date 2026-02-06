@@ -3,9 +3,11 @@ import {
   ExtractResponse,
   ApproveResponse,
   EditedValue,
+  VerificationResult,
   extractData,
   extractDataFromPDF,
   approveExtraction,
+  verifySession,
   exportExcel,
   exportReport,
 } from './api/client';
@@ -25,6 +27,8 @@ function App() {
   const [approveResult, setApproveResult] = useState<ApproveResponse | null>(null);
   const [editedValues, setEditedValues] = useState<Record<string, EditedValue>>({});
   const [inputMode, setInputMode] = useState<InputMode>('ticker');
+  const [verification, setVerification] = useState<VerificationResult | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [exportingExcel, setExportingExcel] = useState(false);
   const [exportingWord, setExportingWord] = useState(false);
 
@@ -42,6 +46,7 @@ function App() {
         result = await extractDataFromPDF(data as File, model);
       }
       setExtractResult(result);
+      setVerification(result.verification);
       setState('review');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to extract data');
@@ -81,6 +86,20 @@ function App() {
 
       return { ...prev, [metricKey]: updated };
     });
+  };
+
+  const handleReVerify = async () => {
+    if (!extractResult) return;
+    setVerifying(true);
+    try {
+      const edits = Object.values(editedValues);
+      const result = await verifySession(extractResult.session_id, edits);
+      setVerification(result);
+    } catch (err) {
+      // Silently fail - verification is informational
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const handleApprove = async () => {
@@ -145,6 +164,7 @@ function App() {
     setExtractResult(null);
     setApproveResult(null);
     setEditedValues({});
+    setVerification(null);
     setError(null);
   };
 
@@ -212,8 +232,20 @@ function App() {
             </div>
           )}
 
+          {/* Verification banner hidden for now */}
+
           <div className="card">
-            <h3>Review Extracted Values</h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <h3 style={{ margin: 0 }}>Review Extracted Values</h3>
+              <button
+                className="secondary"
+                onClick={handleReVerify}
+                disabled={verifying}
+                style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}
+              >
+                {verifying ? 'Verifying...' : 'Re-verify'}
+              </button>
+            </div>
             <p className="text-sm text-muted mb-2">
               Click any value to edit. {inputMode === 'ticker' ? 'Click the source link to view the SEC filing.' : 'Source information is shown for each value.'}
             </p>
@@ -224,6 +256,7 @@ function App() {
               editedValues={editedValues}
               onValueChange={handleValueChange}
               onResetValue={handleResetValue}
+              verification={verification}
             />
           </div>
 

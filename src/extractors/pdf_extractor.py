@@ -102,7 +102,7 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> dict[int, str]:
 
 def extract_from_pdf(
     pdf_text: dict[int, str],
-    model: str = "claude-opus-4-5-20251101"
+    model: str = "claude-opus-4-6"
 ) -> PDFExtractionResult:
     """
     Extract financial data from PDF text using LLM.
@@ -121,10 +121,40 @@ def extract_from_pdf(
         [f"--- Page {page_num + 1} ---\n{text}" for page_num, text in sorted(pdf_text.items())]
     )
 
-    # Required metrics list for prompt
-    metrics_list = "\n".join(
-        [f"{i+1}. {METRIC_DISPLAY_NAMES.get(m, m)} ({m})" for i, m in enumerate(REQUIRED_BASE_METRICS)]
-    )
+    # Group metrics by statement for clearer prompt
+    income_stmt = [m for m in REQUIRED_BASE_METRICS if m in [
+        "revenue", "cost_of_revenue", "gross_profit", "sga_expense", "rd_expense",
+        "depreciation_amortization", "other_operating_expense", "total_operating_expenses",
+        "operating_income", "interest_expense", "other_income_expense",
+        "income_before_tax", "income_tax_expense", "net_income", "stock_compensation",
+    ]]
+    balance_sheet = [m for m in REQUIRED_BASE_METRICS if m in [
+        "cash", "short_term_investments", "accounts_receivable", "inventories",
+        "other_current_assets", "current_assets", "ppe_net", "goodwill",
+        "intangible_assets", "other_noncurrent_assets", "total_assets",
+        "accounts_payable", "short_term_debt", "accrued_liabilities",
+        "other_current_liabilities", "current_liabilities", "long_term_debt",
+        "other_noncurrent_liabilities", "total_liabilities", "stockholders_equity", "total_debt",
+    ]]
+    cash_flow = [m for m in REQUIRED_BASE_METRICS if m in [
+        "cf_net_income", "cf_depreciation_amortization", "cf_stock_compensation",
+        "cf_working_capital_changes", "cf_other_operating", "cash_from_operations",
+        "capital_expenditures", "acquisitions", "cf_other_investing", "cash_from_investing",
+        "debt_issuance_repayment", "stock_repurchases", "dividends_paid",
+        "cf_other_financing", "cash_from_financing", "net_change_in_cash",
+    ]]
+
+    def format_group(keys, start_num):
+        return "\n".join([f"{start_num + i}. {METRIC_DISPLAY_NAMES.get(m, m)} ({m})" for i, m in enumerate(keys)])
+
+    metrics_list = f"""INCOME STATEMENT:
+{format_group(income_stmt, 1)}
+
+BALANCE SHEET:
+{format_group(balance_sheet, len(income_stmt) + 1)}
+
+CASH FLOW STATEMENT:
+{format_group(cash_flow, len(income_stmt) + len(balance_sheet) + 1)}"""
 
     prompt = f"""You are a financial data extraction specialist. Extract financial data from this 10-K filing PDF.
 
@@ -213,7 +243,7 @@ PDF CONTENT:
     try:
         response = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=8192,
             messages=[
                 {"role": "user", "content": prompt}
             ]
@@ -372,7 +402,7 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
         unmapped_notes=pdf_result.unmapped_notes,
         not_found=pdf_result.not_found,
         unit=pdf_result.unit,  # Store the unit extracted from PDF
-        llm_model="claude-opus-4-5-20251101",  # Will be set by caller
+        llm_model="claude-opus-4-6",  # Will be set by caller
         llm_notes=pdf_result.llm_notes,
         llm_warnings=pdf_result.llm_warnings,
     )

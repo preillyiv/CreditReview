@@ -11,7 +11,14 @@ from docx.oxml import parse_xml
 
 from src.calculators.metrics import FinancialMetrics
 from src.calculators.ratios import FinancialRatios
+from src.calculators.verification import VerificationResult
 from src.fetchers.yahoo import CompanyInfo, CorporateAction
+from src.models.extraction import (
+    ExtractionSession,
+    INCOME_STATEMENT_ITEMS,
+    BALANCE_SHEET_ITEMS,
+    CASH_FLOW_ITEMS,
+)
 
 
 # Colors
@@ -451,6 +458,129 @@ def add_ebitda_reconciliation(doc: Document, metrics: FinancialMetrics, fiscal_y
     doc.add_paragraph()
 
 
+def add_detailed_statement_table(
+    doc: Document,
+    title: str,
+    items: list,
+    session: ExtractionSession,
+    fiscal_year: str,
+    prior_year: str,
+    unit: str = "dollars",
+):
+    """Add a detailed financial statement table (Income Statement, Balance Sheet, or Cash Flow)."""
+    doc.add_heading(title, level=2)
+
+    # Filter to items with data
+    visible = [item for item in items if item.metric_key in session.raw_values]
+    if not visible:
+        doc.add_paragraph(f"No {title.lower()} data available.")
+        return
+
+    table = doc.add_table(rows=1 + len(visible), cols=4)
+    table.style = "Table Grid"
+    table.autofit = False
+
+    # Set column widths: wider label column, equal value columns
+    col_widths = [Inches(2.8), Inches(1.4), Inches(1.4), Inches(1.4)]
+    for col_idx, width in enumerate(col_widths):
+        table.columns[col_idx].width = width
+
+    # Header
+    headers = [title, fiscal_year[:4], prior_year[:4], "Delta"]
+    for i, header in enumerate(headers):
+        cell = table.rows[0].cells[i]
+        cell.width = col_widths[i]
+        cell.text = header
+        set_cell_shading(cell, HEADER_BLUE)
+        run = cell.paragraphs[0].runs[0]
+        run.font.bold = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(255, 255, 255)
+
+    row_idx = 0
+    for item in visible:
+        row_idx += 1
+        ev = session.raw_values[item.metric_key]
+        row = table.rows[row_idx]
+        cells = row.cells
+
+        # Set widths on every row to prevent Word from auto-resizing
+        for ci in range(4):
+            cells[ci].width = col_widths[ci]
+
+        # Label with indent
+        label = ("    " if item.indent_level > 0 else "") + item.display_name
+        cells[0].text = label
+        for run in cells[0].paragraphs[0].runs:
+            run.font.size = Pt(9)
+            if item.is_bold:
+                run.font.bold = True
+
+        # Values
+        for ci, val_text in enumerate([
+            format_currency(ev.value, unit=unit),
+            format_currency(ev.value_prior, unit=unit),
+        ], start=1):
+            cells[ci].text = val_text
+            for run in cells[ci].paragraphs[0].runs:
+                run.font.size = Pt(9)
+
+        # Delta
+        delta_str, color = format_delta(ev.value, ev.value_prior, unit=unit)
+        cells[3].text = delta_str
+        for run in cells[3].paragraphs[0].runs:
+            run.font.size = Pt(9)
+        if color == "green":
+            set_cell_shading(cells[3], GREEN_BG)
+        elif color == "red":
+            set_cell_shading(cells[3], RED_BG)
+
+        # Bold subtotal rows
+        if item.is_bold:
+            for cell in cells:
+                for run in cell.paragraphs[0].runs:
+                    run.font.bold = True
+
+        # Alternate row shading
+        if row_idx % 2 == 0:
+            for cell in [cells[0], cells[1], cells[2]]:
+                set_cell_shading(cell, LIGHT_GRAY)
+
+    doc.add_paragraph()
+
+
+def add_verification_summary(doc: Document, verification: VerificationResult):
+    """Add a verification summary section to the report."""
+    doc.add_heading("Data Verification", level=2)
+
+    # Summary paragraph
+    active = [c for c in verification.checks if not c.skipped]
+    passed = [c for c in active if c.passed]
+    failed = [c for c in active if not c.passed]
+
+    summary = f"{len(passed)} of {len(active)} checks passed"
+    if verification.skip_count > 0:
+        summary += f" ({verification.skip_count} skipped due to missing data)"
+
+    para = doc.add_paragraph()
+    run = para.add_run(summary)
+    if len(failed) == 0:
+        run.font.color.rgb = RGBColor(0, 128, 0)  # Green
+    else:
+        run.font.color.rgb = RGBColor(200, 0, 0)  # Red
+
+    if failed:
+        doc.add_paragraph()
+        for check in failed:
+            para = doc.add_paragraph(style="List Bullet")
+            severity = "ERROR" if check.severity == "error" else "WARNING"
+            para.add_run(f"[{severity}] ").bold = True
+            para.add_run(f"{check.description} ({check.year}): {check.formula}")
+            para.add_run(f" — Diff: {check.difference:,.0f}")
+
+    doc.add_paragraph()
+
+
 def generate_word_report(
     output_path,
     company_info: CompanyInfo,
@@ -466,6 +596,8 @@ def generate_word_report(
     sp_outlook: str = "[EDIT]",
     moodys_rating: str = "[EDIT]",
     moodys_outlook: str = "[EDIT]",
+    session: ExtractionSession = None,
+    verification: VerificationResult = None,
 ):
     """
     Generate a Word document financial report.
@@ -518,6 +650,28 @@ def generate_word_report(
 
     # EBITDA Reconciliation
     add_ebitda_reconciliation(doc, metrics, fiscal_year_end, fiscal_year_end_prior, unit=unit)
+
+    # Detailed Financial Statements (if session data available)
+    if session:
+        doc.add_page_break()
+        doc.add_heading("Detailed Financial Statements", level=1)
+
+        add_detailed_statement_table(
+            doc, "Income Statement", INCOME_STATEMENT_ITEMS, session,
+            fiscal_year_end, fiscal_year_end_prior, unit=unit,
+        )
+        add_detailed_statement_table(
+            doc, "Balance Sheet", BALANCE_SHEET_ITEMS, session,
+            fiscal_year_end, fiscal_year_end_prior, unit=unit,
+        )
+        add_detailed_statement_table(
+            doc, "Cash Flow Statement", CASH_FLOW_ITEMS, session,
+            fiscal_year_end, fiscal_year_end_prior, unit=unit,
+        )
+
+    # Verification Summary
+    if verification:
+        add_verification_summary(doc, verification)
 
     # Save - support both Path and BytesIO
     import io

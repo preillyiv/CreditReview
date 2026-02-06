@@ -237,7 +237,7 @@ def extract_financial_data(ticker: str) -> ExtractionResult | None:
     prompt = _get_extraction_prompt(company.name, ticker, concept_summary)
 
     message = client.messages.create(
-        model="claude-opus-4-5-20251101",
+        model="claude-opus-4-6",
         max_tokens=16000,
         messages=[
             {"role": "user", "content": prompt}
