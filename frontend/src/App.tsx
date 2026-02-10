@@ -12,6 +12,7 @@ import {
   exportReport,
 } from './api/client';
 import { DataInput, InputMode, LLMModel } from './components/TickerInput';
+import { ReviewTable } from './components/ReviewTable';
 import { FinancialStatementsTable } from './components/FinancialStatementsTable';
 import { UnmappedSection } from './components/UnmappedSection';
 import { ExportButtons } from './components/ExportButtons';
