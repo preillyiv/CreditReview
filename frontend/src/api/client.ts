@@ -394,7 +394,7 @@ export async function exportPdf(
  * @param value - The numeric value in dollars (after backend normalization)
  * @param unit - The original unit for context (not used in formatting, included for consistency)
  */
-export function formatCurrency(value: number, _unit?: string): string {
+export function formatCurrency(value: number, unit?: string): string {
   if (Math.abs(value) >= 1e9) {
     return `$${(value / 1e9).toFixed(1)}B`;
   } else if (Math.abs(value) >= 1e6) {

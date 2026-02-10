@@ -20,8 +20,8 @@ export function ReviewTable({
   editedValues,
   onValueChange,
   onResetValue,
-  isSECData: _isSECData = true,
-  unit: _unit,
+  isSECData = true,
+  unit,
 }: ReviewTableProps) {
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');

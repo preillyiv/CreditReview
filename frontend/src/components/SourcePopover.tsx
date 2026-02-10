@@ -22,7 +22,7 @@ export function SourcePopover({ citation }: SourcePopoverProps) {
     <span className="tooltip">
       {isPdfSource ? (
         <span style={{ fontSize: '0.8rem', color: '#666' }}>
-          {getPageDisplay(citation.statement ?? '')}
+          {getPageDisplay(citation.statement)}
         </span>
       ) : (
         <a
