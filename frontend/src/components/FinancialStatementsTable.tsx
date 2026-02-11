@@ -21,7 +21,7 @@ interface FinancialStatementsTableProps {
   verification: VerificationResult | null;
 }
 
-function VerificationBadge({ checks }: { checks: VerificationCheck[] }) {
+function _VerificationBadge({ checks }: { checks: VerificationCheck[] }) {
   const activeChecks = checks.filter((c) => !c.skipped);
   if (activeChecks.length === 0) return null;
 
@@ -53,7 +53,7 @@ function VerificationBadge({ checks }: { checks: VerificationCheck[] }) {
   );
 }
 
-function VerificationAlerts({ checks }: { checks: VerificationCheck[] }) {
+function _VerificationAlerts({ checks }: { checks: VerificationCheck[] }) {
   const failedChecks = checks.filter((c) => !c.passed && !c.skipped);
   if (failedChecks.length === 0) return null;
 
@@ -221,7 +221,7 @@ function StatementSection({
   editedValues,
   onValueChange,
   onResetValue,
-  checks,
+  checks: _checks,
 }: {
   title: string;
   items: StatementLineItem[];
