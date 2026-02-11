@@ -71,119 +71,113 @@ class PDFExtractionResult:
     llm_warnings: list
 
 
+_FINANCIAL_KEYWORDS = [
+    "consolidated statements of operations",
+    "consolidated statements of income",
+    "consolidated balance sheet",
+    "consolidated statements of financial position",
+    "consolidated statements of cash flow",
+    "consolidated statements of stockholders",
+    "consolidated statements of shareholders",
+    "consolidated statements of comprehensive",
+    "total assets",
+    "total liabilities",
+    "total stockholders",
+    "total shareholders",
+    "net cash provided",
+    "net cash used",
+    "cash flows from operating",
+    "cash flows from investing",
+    "cash flows from financing",
+    "operating income",
+    "gross profit",
+    "income before income tax",
+    "net income",
+    "cost of sales",
+    "cost of revenue",
+    "depreciation and amortization",
+    "accounts receivable",
+    "accounts payable",
+    "long-term debt",
+    "current portion",
+    "capital expenditure",
+]
+
+_COMPANY_INFO_KEYWORDS = [
+    "item 1.",
+    "item 1 ",
+    "business overview",
+    "company overview",
+    "s&p",
+    "moody",
+    "credit rating",
+    "fitch rating",
+]
+
+
 def extract_text_from_pdf(pdf_bytes: bytes) -> dict[int, str]:
     """
-    Extract text from PDF file.
+    Extract text from only the financially relevant pages of a PDF.
 
-    Args:
-        pdf_bytes: Raw PDF file bytes
+    Uses a two-pass approach to minimize peak memory:
+    1. Light scan: extract text one page at a time, check for keywords, record page numbers only
+    2. Targeted extraction: re-open PDF and extract text from only the selected pages
 
-    Returns:
-        Dict mapping page number (0-indexed) to text content
-
-    Raises:
-        ValueError: If PDF is corrupted or cannot be parsed
+    This prevents OOM crashes on memory-constrained servers (512MB).
     """
+    import gc
+
     try:
-        pdf_text = {}
-        # Wrap bytes in BytesIO to create a file-like object
+        # Pass 1: Scan pages for financial keywords, keep only page numbers
+        relevant_pages = set(range(min(3, 1)))  # placeholder, set properly below
         pdf_file = BytesIO(pdf_bytes)
         with pdfplumber.open(pdf_file) as pdf:
-            for page_num, page in enumerate(pdf.pages):
-                text = page.extract_text()
+            total_pages = len(pdf.pages)
+            relevant_pages = set(range(min(3, total_pages)))  # first 3 pages always
+
+            for page_num in range(total_pages):
+                text = pdf.pages[page_num].extract_text()
+                if not text:
+                    continue
+
+                text_lower = text.lower()
+                fin_hits = sum(1 for kw in _FINANCIAL_KEYWORDS if kw in text_lower)
+                info_hits = sum(1 for kw in _COMPANY_INFO_KEYWORDS if kw in text_lower)
+
+                if fin_hits >= 2 or info_hits >= 1:
+                    relevant_pages.add(page_num)
+                    if page_num > 0:
+                        relevant_pages.add(page_num - 1)
+                    if page_num + 1 < total_pages:
+                        relevant_pages.add(page_num + 1)
+
+                # Free the page text immediately
+                del text
+        del pdf_file
+        gc.collect()
+
+        # Pass 2: Extract text from only the relevant pages
+        result = {}
+        pdf_file = BytesIO(pdf_bytes)
+        with pdfplumber.open(pdf_file) as pdf:
+            for page_num in sorted(relevant_pages):
+                text = pdf.pages[page_num].extract_text()
                 if text:
-                    pdf_text[page_num] = text
-        return pdf_text
+                    result[page_num] = text
+        del pdf_file
+        gc.collect()
+
+        print(f"[PDF] Selected {len(result)} of {total_pages} pages for extraction")
+        return result
+    except MemoryError:
+        raise ValueError(
+            "PDF too large to process with available server memory. "
+            "Try a shorter document or use the ticker lookup instead."
+        )
     except Exception as e:
         raise ValueError(
             f"Unable to extract text from PDF. Ensure it contains searchable text, not scanned images. Error: {str(e)}"
         )
-
-
-def _select_relevant_pages(pdf_text: dict[int, str]) -> dict[int, str]:
-    """
-    Select only the pages that contain financial data, company info, or credit ratings.
-
-    10-K filings are 100-200+ pages, but the financial statements live on ~10-15 pages.
-    Sending the full document would exceed memory limits on constrained servers.
-
-    Strategy:
-    - Always include first 3 pages (cover page, TOC, company overview)
-    - Keyword-scan all pages to find financial statement pages
-    - Include 1 page of context around each matched page
-    - Also grab pages mentioning credit ratings
-    """
-    FINANCIAL_KEYWORDS = [
-        # Statement headers (case-insensitive matching below)
-        "consolidated statements of operations",
-        "consolidated statements of income",
-        "consolidated balance sheet",
-        "consolidated statements of financial position",
-        "consolidated statements of cash flow",
-        "consolidated statements of stockholders",
-        "consolidated statements of shareholders",
-        "consolidated statements of comprehensive",
-        # Table indicators
-        "total assets",
-        "total liabilities",
-        "total stockholders",
-        "total shareholders",
-        "net cash provided",
-        "net cash used",
-        "cash flows from operating",
-        "cash flows from investing",
-        "cash flows from financing",
-        "operating income",
-        "gross profit",
-        "income before income tax",
-        "net income",
-        "cost of sales",
-        "cost of revenue",
-        "depreciation and amortization",
-        "accounts receivable",
-        "accounts payable",
-        "long-term debt",
-        "current portion",
-        "capital expenditure",
-    ]
-
-    COMPANY_INFO_KEYWORDS = [
-        "item 1.",
-        "item 1 ",
-        "business overview",
-        "company overview",
-        "s&p",
-        "moody",
-        "credit rating",
-        "fitch rating",
-    ]
-
-    all_pages = sorted(pdf_text.keys())
-    selected = set()
-
-    # Always include first 3 pages (cover, TOC, start of Item 1)
-    for p in all_pages[:3]:
-        selected.add(p)
-
-    # Score each page and select those with financial content
-    for page_num, text in pdf_text.items():
-        text_lower = text.lower()
-        hits = sum(1 for kw in FINANCIAL_KEYWORDS if kw in text_lower)
-        info_hits = sum(1 for kw in COMPANY_INFO_KEYWORDS if kw in text_lower)
-
-        if hits >= 2 or info_hits >= 1:
-            selected.add(page_num)
-            # Include surrounding pages for context (table headers/continuations)
-            if page_num - 1 in pdf_text:
-                selected.add(page_num - 1)
-            if page_num + 1 in pdf_text:
-                selected.add(page_num + 1)
-
-    selected_pages = {p: pdf_text[p] for p in sorted(selected) if p in pdf_text}
-
-    print(f"[PDF] Selected {len(selected_pages)} of {len(pdf_text)} pages for extraction")
-
-    return selected_pages
 
 
 def extract_from_pdf(
@@ -202,12 +196,9 @@ def extract_from_pdf(
     """
     client = Anthropic()
 
-    # Select only pages with financial data to avoid OOM on constrained servers
-    relevant_pages = _select_relevant_pages(pdf_text)
-
-    # Build prompt with selected pages only
+    # Pages are already filtered by extract_text_from_pdf — build prompt directly
     pdf_content = "\n\n".join(
-        [f"--- Page {page_num + 1} ---\n{text}" for page_num, text in sorted(relevant_pages.items())]
+        [f"--- Page {page_num + 1} ---\n{text}" for page_num, text in sorted(pdf_text.items())]
     )
 
     # Group metrics by statement for clearer prompt
