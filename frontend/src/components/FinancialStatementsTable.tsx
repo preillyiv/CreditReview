@@ -21,66 +21,6 @@ interface FinancialStatementsTableProps {
   verification: VerificationResult | null;
 }
 
-function _VerificationBadge({ checks }: { checks: VerificationCheck[] }) {
-  const activeChecks = checks.filter((c) => !c.skipped);
-  if (activeChecks.length === 0) return null;
-
-  const allPassed = activeChecks.every((c) => c.passed);
-  const hasErrors = activeChecks.some((c) => !c.passed && c.severity === 'error');
-
-  const color = allPassed ? '#28a745' : hasErrors ? '#dc3545' : '#ffc107';
-  const label = allPassed
-    ? 'Verified'
-    : hasErrors
-    ? `${activeChecks.filter((c) => !c.passed).length} issue(s)`
-    : `${activeChecks.filter((c) => !c.passed).length} warning(s)`;
-
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        padding: '0.15rem 0.5rem',
-        borderRadius: '12px',
-        backgroundColor: color,
-        color: allPassed || hasErrors ? 'white' : '#333',
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        marginLeft: '0.5rem',
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-function _VerificationAlerts({ checks }: { checks: VerificationCheck[] }) {
-  const failedChecks = checks.filter((c) => !c.passed && !c.skipped);
-  if (failedChecks.length === 0) return null;
-
-  return (
-    <div style={{ marginTop: '0.5rem' }}>
-      {failedChecks.map((check) => (
-        <div
-          key={`${check.check_id}-${check.year}`}
-          style={{
-            padding: '0.5rem 0.75rem',
-            marginBottom: '0.25rem',
-            borderRadius: '4px',
-            fontSize: '0.85rem',
-            backgroundColor: check.severity === 'error' ? '#f8d7da' : '#fff3cd',
-            color: check.severity === 'error' ? '#721c24' : '#856404',
-            border: `1px solid ${check.severity === 'error' ? '#f5c6cb' : '#ffeeba'}`,
-          }}
-        >
-          <strong>{check.severity === 'error' ? 'Error' : 'Warning'}</strong> ({check.year}): {check.formula}
-          {' — '}
-          Diff: {formatCurrency(check.difference)} ({(check.tolerance * 100).toFixed(1)}% tolerance)
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function EditableCell({
   metricKey,
   value,
