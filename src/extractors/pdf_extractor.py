@@ -100,6 +100,92 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> dict[int, str]:
         )
 
 
+def _select_relevant_pages(pdf_text: dict[int, str]) -> dict[int, str]:
+    """
+    Select only the pages that contain financial data, company info, or credit ratings.
+
+    10-K filings are 100-200+ pages, but the financial statements live on ~10-15 pages.
+    Sending the full document would exceed memory limits on constrained servers.
+
+    Strategy:
+    - Always include first 3 pages (cover page, TOC, company overview)
+    - Keyword-scan all pages to find financial statement pages
+    - Include 1 page of context around each matched page
+    - Also grab pages mentioning credit ratings
+    """
+    FINANCIAL_KEYWORDS = [
+        # Statement headers (case-insensitive matching below)
+        "consolidated statements of operations",
+        "consolidated statements of income",
+        "consolidated balance sheet",
+        "consolidated statements of financial position",
+        "consolidated statements of cash flow",
+        "consolidated statements of stockholders",
+        "consolidated statements of shareholders",
+        "consolidated statements of comprehensive",
+        # Table indicators
+        "total assets",
+        "total liabilities",
+        "total stockholders",
+        "total shareholders",
+        "net cash provided",
+        "net cash used",
+        "cash flows from operating",
+        "cash flows from investing",
+        "cash flows from financing",
+        "operating income",
+        "gross profit",
+        "income before income tax",
+        "net income",
+        "cost of sales",
+        "cost of revenue",
+        "depreciation and amortization",
+        "accounts receivable",
+        "accounts payable",
+        "long-term debt",
+        "current portion",
+        "capital expenditure",
+    ]
+
+    COMPANY_INFO_KEYWORDS = [
+        "item 1.",
+        "item 1 ",
+        "business overview",
+        "company overview",
+        "s&p",
+        "moody",
+        "credit rating",
+        "fitch rating",
+    ]
+
+    all_pages = sorted(pdf_text.keys())
+    selected = set()
+
+    # Always include first 3 pages (cover, TOC, start of Item 1)
+    for p in all_pages[:3]:
+        selected.add(p)
+
+    # Score each page and select those with financial content
+    for page_num, text in pdf_text.items():
+        text_lower = text.lower()
+        hits = sum(1 for kw in FINANCIAL_KEYWORDS if kw in text_lower)
+        info_hits = sum(1 for kw in COMPANY_INFO_KEYWORDS if kw in text_lower)
+
+        if hits >= 2 or info_hits >= 1:
+            selected.add(page_num)
+            # Include surrounding pages for context (table headers/continuations)
+            if page_num - 1 in pdf_text:
+                selected.add(page_num - 1)
+            if page_num + 1 in pdf_text:
+                selected.add(page_num + 1)
+
+    selected_pages = {p: pdf_text[p] for p in sorted(selected) if p in pdf_text}
+
+    print(f"[PDF] Selected {len(selected_pages)} of {len(pdf_text)} pages for extraction")
+
+    return selected_pages
+
+
 def extract_from_pdf(
     pdf_text: dict[int, str],
     model: str = "claude-opus-4-6"
@@ -116,9 +202,12 @@ def extract_from_pdf(
     """
     client = Anthropic()
 
-    # Build prompt with PDF text
+    # Select only pages with financial data to avoid OOM on constrained servers
+    relevant_pages = _select_relevant_pages(pdf_text)
+
+    # Build prompt with selected pages only
     pdf_content = "\n\n".join(
-        [f"--- Page {page_num + 1} ---\n{text}" for page_num, text in sorted(pdf_text.items())]
+        [f"--- Page {page_num + 1} ---\n{text}" for page_num, text in sorted(relevant_pages.items())]
     )
 
     # Group metrics by statement for clearer prompt
