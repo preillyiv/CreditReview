@@ -2,16 +2,15 @@
 PDF-based financial data extraction.
 
 This module handles:
-1. Extracting text from PDF files (pdfplumber)
-2. Using LLM to extract financial metrics from PDF text
+1. Sending PDFs directly to Claude's API (native PDF support — no local parsing)
+2. Extracting financial metrics from Claude's response
 3. Normalizing PDF extraction results for use by shared session builder
 """
 
+import base64
 import json
 import re
 from dataclasses import dataclass
-from io import BytesIO
-import pdfplumber
 from anthropic import Anthropic
 
 from src.models.extraction import REQUIRED_BASE_METRICS, METRIC_DISPLAY_NAMES
@@ -71,124 +70,18 @@ class PDFExtractionResult:
     llm_warnings: list
 
 
-_FINANCIAL_KEYWORDS = [
-    "consolidated statements of operations",
-    "consolidated statements of income",
-    "consolidated balance sheet",
-    "consolidated statements of financial position",
-    "consolidated statements of cash flow",
-    "consolidated statements of stockholders",
-    "consolidated statements of shareholders",
-    "consolidated statements of comprehensive",
-    "total assets",
-    "total liabilities",
-    "total stockholders",
-    "total shareholders",
-    "net cash provided",
-    "net cash used",
-    "cash flows from operating",
-    "cash flows from investing",
-    "cash flows from financing",
-    "operating income",
-    "gross profit",
-    "income before income tax",
-    "net income",
-    "cost of sales",
-    "cost of revenue",
-    "depreciation and amortization",
-    "accounts receivable",
-    "accounts payable",
-    "long-term debt",
-    "current portion",
-    "capital expenditure",
-]
-
-_COMPANY_INFO_KEYWORDS = [
-    "item 1.",
-    "item 1 ",
-    "business overview",
-    "company overview",
-    "s&p",
-    "moody",
-    "credit rating",
-    "fitch rating",
-]
-
-
-def extract_text_from_pdf(pdf_bytes: bytes) -> dict[int, str]:
-    """
-    Extract text from only the financially relevant pages of a PDF.
-
-    Uses a two-pass approach to minimize peak memory:
-    1. Light scan: extract text one page at a time, check for keywords, record page numbers only
-    2. Targeted extraction: re-open PDF and extract text from only the selected pages
-
-    This prevents OOM crashes on memory-constrained servers (512MB).
-    """
-    import gc
-
-    try:
-        # Pass 1: Scan pages for financial keywords, keep only page numbers
-        relevant_pages = set(range(min(3, 1)))  # placeholder, set properly below
-        pdf_file = BytesIO(pdf_bytes)
-        with pdfplumber.open(pdf_file) as pdf:
-            total_pages = len(pdf.pages)
-            relevant_pages = set(range(min(3, total_pages)))  # first 3 pages always
-
-            for page_num in range(total_pages):
-                text = pdf.pages[page_num].extract_text()
-                if not text:
-                    continue
-
-                text_lower = text.lower()
-                fin_hits = sum(1 for kw in _FINANCIAL_KEYWORDS if kw in text_lower)
-                info_hits = sum(1 for kw in _COMPANY_INFO_KEYWORDS if kw in text_lower)
-
-                if fin_hits >= 2 or info_hits >= 1:
-                    relevant_pages.add(page_num)
-                    if page_num > 0:
-                        relevant_pages.add(page_num - 1)
-                    if page_num + 1 < total_pages:
-                        relevant_pages.add(page_num + 1)
-
-                # Free the page text immediately
-                del text
-        del pdf_file
-        gc.collect()
-
-        # Pass 2: Extract text from only the relevant pages
-        result = {}
-        pdf_file = BytesIO(pdf_bytes)
-        with pdfplumber.open(pdf_file) as pdf:
-            for page_num in sorted(relevant_pages):
-                text = pdf.pages[page_num].extract_text()
-                if text:
-                    result[page_num] = text
-        del pdf_file
-        gc.collect()
-
-        print(f"[PDF] Selected {len(result)} of {total_pages} pages for extraction")
-        return result
-    except MemoryError:
-        raise ValueError(
-            "PDF too large to process with available server memory. "
-            "Try a shorter document or use the ticker lookup instead."
-        )
-    except Exception as e:
-        raise ValueError(
-            f"Unable to extract text from PDF. Ensure it contains searchable text, not scanned images. Error: {str(e)}"
-        )
-
-
-def extract_from_pdf(
-    pdf_text: dict[int, str],
+def extract_from_pdf_bytes(
+    pdf_bytes: bytes,
     model: str = "claude-opus-4-6"
 ) -> PDFExtractionResult:
     """
-    Extract financial data from PDF text using LLM.
+    Extract financial data by sending the PDF directly to Claude's API.
+
+    Claude natively reads PDFs — no local parsing library needed.
+    This avoids memory issues from pdfplumber on constrained servers.
 
     Args:
-        pdf_text: Dict of page_number -> text from extract_text_from_pdf()
+        pdf_bytes: Raw PDF file bytes
         model: Claude model to use
 
     Returns:
@@ -196,12 +89,10 @@ def extract_from_pdf(
     """
     client = Anthropic()
 
-    # Pages are already filtered by extract_text_from_pdf — build prompt directly
-    pdf_content = "\n\n".join(
-        [f"--- Page {page_num + 1} ---\n{text}" for page_num, text in sorted(pdf_text.items())]
-    )
+    # Base64 encode the PDF for the API
+    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
 
-    # Group metrics by statement for clearer prompt
+    # Build the extraction prompt
     income_stmt = [m for m in REQUIRED_BASE_METRICS if m in [
         "revenue", "cost_of_revenue", "gross_profit", "sga_expense", "rd_expense",
         "depreciation_amortization", "other_operating_expense", "total_operating_expenses",
@@ -315,25 +206,40 @@ Return ONLY valid JSON (no markdown, no extra text):
   "not_found": ["metric_keys that couldn't be found"],
   "llm_notes": ["processing notes"],
   "llm_warnings": ["warnings about data quality or confidence"]
-}}
-
-PDF CONTENT:
-{pdf_content}"""
+}}"""
 
     try:
         response = client.messages.create(
             model=model,
             max_tokens=8192,
             messages=[
-                {"role": "user", "content": prompt}
-            ]
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "document",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "application/pdf",
+                                "data": pdf_b64,
+                            },
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        },
+                    ],
+                }
+            ],
         )
+
+        # Free the base64 string now that the API call is done
+        del pdf_b64
 
         result_text = response.content[0].text
 
         # Handle markdown-wrapped JSON (```json ... ```)
         if result_text.strip().startswith('```'):
-            # Extract JSON from markdown code block
             lines = result_text.strip().split('\n')
             json_lines = []
             in_json = False
@@ -350,16 +256,13 @@ PDF CONTENT:
 
         result_json = json.loads(result_text)
 
-        # Validate we got expected structure
         if not isinstance(result_json, dict):
             raise ValueError(f"Expected JSON object, got {type(result_json).__name__}")
 
         # Parse result into PDFExtractionResult with defaults
         # NOTE: For 10-K filings, always use "millions" as the default unit (SEC standard)
-        # If LLM returns "dollars", override it - 10-K financial statements are always in millions
         llm_unit = result_json.get("unit") or "dollars"
         if llm_unit.lower().strip() == "dollars":
-            # 10-K filing convention: financial metrics are in millions, not dollars
             llm_unit = "millions"
 
         pdf_result = PDFExtractionResult(
@@ -367,7 +270,7 @@ PDF CONTENT:
             ticker=result_json.get("ticker") or "",
             fiscal_year_end=result_json.get("fiscal_year_end") or "",
             fiscal_year_end_prior=result_json.get("fiscal_year_end_prior") or "",
-            unit=normalize_unit(llm_unit),  # Normalize to standard format
+            unit=normalize_unit(llm_unit),
             metrics=result_json.get("metrics") or {},
             company_info=result_json.get("company_info") or {},
             credit_ratings=result_json.get("credit_ratings") or {},
@@ -384,7 +287,6 @@ PDF CONTENT:
 
         return pdf_result
     except json.JSONDecodeError as e:
-        # Show first 200 chars of response for debugging
         preview = result_text[:200] if 'result_text' in locals() else "No response"
         raise ValueError(f"LLM response was not valid JSON: {str(e)}. Response preview: {preview}")
     except Exception as e:
@@ -400,13 +302,10 @@ def _normalize_pdf_result_values(pdf_result: PDFExtractionResult) -> None:
 
     Modifies pdf_result in place.
     """
-    # SEC standard: 10-K financial statement amounts are ALWAYS in millions
-    # No per-metric unit detection, no conditional logic needed - always multiply by 1,000,000
     MILLIONS_MULTIPLIER = 1_000_000
 
     print(f"[DEBUG] _normalize_pdf_result_values: 10-K amounts are in MILLIONS (SEC standard)")
 
-    # Normalize all metric values: multiply by 1,000,000 to get actual dollars
     for metric_key in pdf_result.metrics:
         metric = pdf_result.metrics[metric_key]
         if isinstance(metric, dict):
@@ -422,7 +321,6 @@ def _normalize_pdf_result_values(pdf_result: PDFExtractionResult) -> None:
             if "unit" in metric:
                 del metric["unit"]
 
-    # Update global unit to dollars (all values are now in actual dollars)
     pdf_result.unit = "dollars"
 
 
@@ -434,13 +332,11 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
     """
     metrics = {}
 
-    # Convert each metric to normalized format
     for metric_key, metric_data in pdf_result.metrics.items():
         if metric_key not in REQUIRED_BASE_METRICS:
-            continue  # Skip unknown metrics
+            continue
 
         try:
-            # Safely convert values to float, handling None, empty strings, and zero
             raw_value = metric_data.get("value")
             value = float(raw_value) if raw_value is not None and raw_value != "" else 0.0
 
@@ -450,7 +346,6 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
             page_num = metric_data.get("page_number", 0)
             source_text = metric_data.get("source_text", "")
 
-            # Build source description with page number
             source_desc = f"Page {page_num + 1} of PDF"
             if source_text:
                 source_desc += f": {source_text}"
@@ -460,29 +355,28 @@ def pdf_to_normalized(pdf_result: PDFExtractionResult) -> NormalizedExtractionDa
                 value=value,
                 value_prior=value_prior,
                 source_description=source_desc,
-                source_url="",  # No URL for PDF uploads
+                source_url="",
                 reasoning=source_text,
                 form_type="10-K",
                 period_end=pdf_result.fiscal_year_end,
                 period_end_prior=pdf_result.fiscal_year_end_prior,
-                unit=pdf_result.unit,  # Pass through the unit from PDF
-                statement=source_desc,  # For PDF: source_desc is "Page X of PDF"
+                unit=pdf_result.unit,
+                statement=source_desc,
             )
         except (ValueError, TypeError):
-            # Skip metrics with invalid values
             continue
 
     return NormalizedExtractionData(
         company_name=pdf_result.company_name,
         ticker=pdf_result.ticker,
-        cik="",  # No CIK for PDF uploads
+        cik="",
         fiscal_year_end=pdf_result.fiscal_year_end,
         fiscal_year_end_prior=pdf_result.fiscal_year_end_prior,
         metrics=metrics,
         unmapped_notes=pdf_result.unmapped_notes,
         not_found=pdf_result.not_found,
-        unit=pdf_result.unit,  # Store the unit extracted from PDF
-        llm_model="claude-opus-4-6",  # Will be set by caller
+        unit=pdf_result.unit,
+        llm_model="claude-opus-4-6",
         llm_notes=pdf_result.llm_notes,
         llm_warnings=pdf_result.llm_warnings,
     )

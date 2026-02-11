@@ -637,31 +637,18 @@ async def extract_pdf(
     if len(pdf_bytes) == 0:
         raise HTTPException(status_code=400, detail="File is empty")
 
-    # Extract text from PDF (filters to relevant pages only to save memory)
-    import gc
+    # Send PDF directly to Claude's API (no local parsing — avoids memory issues)
     from src.extractors.pdf_extractor import (
-        extract_text_from_pdf,
-        extract_from_pdf,
+        extract_from_pdf_bytes,
         pdf_to_normalized,
     )
 
     try:
-        pdf_text = extract_text_from_pdf(pdf_bytes)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    finally:
-        # Free PDF bytes immediately — text is extracted, bytes no longer needed
-        del pdf_bytes
-        gc.collect()
-
-    # LLM extraction from PDF
-    try:
-        pdf_result = extract_from_pdf(pdf_text, model=model)
+        pdf_result = extract_from_pdf_bytes(pdf_bytes, model=model)
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        del pdf_text
-        gc.collect()
+        del pdf_bytes
 
     # Normalize to common format
     normalized = pdf_to_normalized(pdf_result)
