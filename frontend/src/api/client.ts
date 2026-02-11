@@ -264,8 +264,15 @@ export async function extractDataFromPDF(file: File, model?: string): Promise<Ex
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to extract data from PDF');
+    let errorMessage = `Server error (HTTP ${response.status})`;
+    try {
+      const error = await response.json();
+      errorMessage = error.detail || errorMessage;
+    } catch {
+      const text = await response.text();
+      errorMessage = `Server error (HTTP ${response.status}): ${text.substring(0, 300)}`;
+    }
+    throw new Error(errorMessage);
   }
 
   return response.json();
