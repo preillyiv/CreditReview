@@ -11,7 +11,9 @@ import base64
 import json
 import re
 from dataclasses import dataclass
+from io import BytesIO
 from anthropic import Anthropic
+from pypdf import PdfReader, PdfWriter
 
 from src.models.extraction import REQUIRED_BASE_METRICS, METRIC_DISPLAY_NAMES
 from src.extractors.session_builder import (
@@ -70,6 +72,35 @@ class PDFExtractionResult:
     llm_warnings: list
 
 
+MAX_PDF_PAGES = 100  # Anthropic API limit
+
+
+def _trim_pdf(pdf_bytes: bytes) -> bytes:
+    """
+    Trim PDF to MAX_PDF_PAGES if it exceeds the limit.
+
+    10-K financial statements are in the first ~80 pages. Pages beyond 100
+    are typically exhibits and certifications that aren't needed for extraction.
+
+    Uses pypdf which is lightweight and doesn't load page content into memory.
+    """
+    reader = PdfReader(BytesIO(pdf_bytes))
+    total = len(reader.pages)
+
+    if total <= MAX_PDF_PAGES:
+        print(f"[PDF] {total} pages — within limit, sending as-is")
+        return pdf_bytes
+
+    print(f"[PDF] {total} pages — trimming to first {MAX_PDF_PAGES} pages")
+    writer = PdfWriter()
+    for i in range(MAX_PDF_PAGES):
+        writer.add_page(reader.pages[i])
+
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
+
+
 def extract_from_pdf_bytes(
     pdf_bytes: bytes,
     model: str = "claude-opus-4-6"
@@ -89,8 +120,12 @@ def extract_from_pdf_bytes(
     """
     client = Anthropic()
 
+    # Trim PDF if it exceeds the API page limit
+    pdf_bytes = _trim_pdf(pdf_bytes)
+
     # Base64 encode the PDF for the API
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode("utf-8")
+    del pdf_bytes  # Free original bytes
 
     # Build the extraction prompt
     income_stmt = [m for m in REQUIRED_BASE_METRICS if m in [
