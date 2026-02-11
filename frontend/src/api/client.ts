@@ -264,12 +264,12 @@ export async function extractDataFromPDF(file: File, model?: string): Promise<Ex
   });
 
   if (!response.ok) {
+    const text = await response.text();
     let errorMessage = `Server error (HTTP ${response.status})`;
     try {
-      const error = await response.json();
+      const error = JSON.parse(text);
       errorMessage = error.detail || errorMessage;
     } catch {
-      const text = await response.text();
       errorMessage = `Server error (HTTP ${response.status}): ${text.substring(0, 300)}`;
     }
     throw new Error(errorMessage);
