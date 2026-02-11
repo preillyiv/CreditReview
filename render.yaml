@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: brotherhood-financial-reporting
+    runtime: docker
+    plan: free
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: LOGO_DEV_TOKEN
+        sync: false
